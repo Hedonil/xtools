@@ -5,7 +5,7 @@
 <br />
 {#welcome#}
 <br /><br />
-<form action="//tools.wmflabs.org/xtools/blame/index.php" method="get" accept-charset="utf-8">
+<form action="?" method="get" accept-charset="utf-8">
 <table>
 <tr><td>{#article#}: </td><td><input type="text" name="article" /> <input type="checkbox" name="nofollowredir" /> {#nofollowredir#}</td></tr>
 <tr><td>{#wiki#}: </td><td><input type="text" value="{$form}" name="lang" size="9" />.<input type="text" value="wikipedia" size="10" name="wiki" />.org</td></tr>

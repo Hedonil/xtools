@@ -3,7 +3,7 @@
 
 {if $form != ""}
 <br />
-<form action="//tools.wmflabs.org/xtools/bash/index.php" method="get" accept-charset="utf-8">
+<form action="?" method="get" accept-charset="utf-8">
 <table class="wikitable">
 <tr>
 	<td colspan="2"><input type="radio" name="action" value="random" checked="checked" /> {#random#}</td>

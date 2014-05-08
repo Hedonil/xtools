@@ -1,8 +1,8 @@
 <?php
 
 //Requires
-   require_once( '/data/project/xtools/public_html/WebTool.php' );
-   require_once( '/data/project/xtools/public_html/autoedits/base.php' );
+   require_once( '/data/project/newwebtest/xtools/public_html/WebTool.php' );
+   require_once( '/data/project/newwebtest/xtools/public_html/autoedits/base.php' );
 
 //Load WebTool class
    $wt = new WebTool( 'AutoEdits', 'autoedits' );
@@ -32,12 +32,13 @@
    $phptemp->assign( "page", $user );
    
    if( !$userClass->exists() ) WebTool::toDieMsg( 'nosuchuser', $user );
-   
-   $count = $userClass->get_editcount( false, $dbr );
-   
-   //Here
-   if( $count > 100000 ) WebTool::toDieMsg( 'toomanyedits', 100000 );
 
+	$useLabs = true;
+   $count = $userClass->get_editcount( false, $dbr );
+
+   //Here
+#   if( $count > 100000 ) WebTool::toDieMsg( 'toomanyedits', 100000 );
+#die("here");
 //Start doing the DB request
    $data = AutoEditsBase::getMatchingEdits( 
       $user,

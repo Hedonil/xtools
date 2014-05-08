@@ -1,20 +1,60 @@
 <?php
 echo "<!--";
-require_once( '/data/project/xtools/Peachy/Init.php' );
+	require_once( '/data/project/newwebtest/Peachy/Init.php' );
+	require_once( '/data/project/newwebtest/xtools/public_html/I18N.php' );
 echo "-->";
+
 function newWebTool( $toolname = null, $smarty_name = null, $dont = array() ) {
    global $wt, $pgHTTP;
    print_r($GLOBALS);
    $wt = new WebTool( $toolname, $smarty_name, $dont );
 }
 
+
+/**
+ * Main class for all xtools subtools
+ * @author jb
+ *
+ */
 class WebTool {
+	
+	public $moreheader;
+	public $alert;
+	public $error;
+	
+	public $title;
+	public $content;
+	
+	public $sourcecode;
+	public $bugreport;
+	
+	public $uselang;
+	public $translate;
+	public $langLinks;
+	
+	public $webRequest;
 
    function __construct( $toolname = null, $smarty_name = null, $dont = array() ) {
-      global $wgRequest, $wtConfigTitle, $phptemp, $content, $time;
+      global $wgRequest, $wtConfigTitle, $phptemp, $content, $time, $I18N;
       
       $time = microtime( 1 );
       
+      //Get new WebReuest object (Peachy)
+      if( is_null( $wgRequest ) ) {
+      	//old style -> global object
+      	$wgRequest = new WebRequest();
+      	//new style -> part of WebTool object
+      	$this->webRequest = $wgRequest;
+      }
+      
+      $this->uselang = $wgRequest->getSafeVal('uselang');
+      $I18N->setLang( $this->uselang );
+      
+      $this->sourcecode = '<a href="//github.com/x-Tools/xtools/" >'.$I18N->msg('source').'</a> |';
+      $this->bugreport = '<a href="//github.com/x-Tools/xtools/issues" >'.$I18N->msg('bugs').'</a> |';
+      $this->translate = $I18N->msg('translatelink');
+      $this->langLinks = $I18N->langLinks;
+	
       $wtConfigTitle = $smarty_name;
       
       mb_internal_encoding("utf-8"); 
@@ -38,7 +78,7 @@ class WebTool {
          self::checkSitenotice();
       }
       
-      if( is_null( $wgRequest ) ) $wgRequest = new WebRequest();
+      
       
       if( !in_array( 'getwikiinfo', $dont ) ) self::getWikiInfo();
       
@@ -118,7 +158,7 @@ class WebTool {
       if( !isset( $backtrace[0]['file'] ) ) {
          self::toDie( "File backtrace not found." );
       }
-      
+    
       $langs = glob( dirname( $backtrace[1]['file'] ) . '/configs/*.conf' );
       $langs = array_merge( $langs, glob( dirname( $backtrace[1]['file'] ) . '/../configs/*.conf' ) );
       
@@ -146,7 +186,9 @@ class WebTool {
       
       $object = new Smarty();
       $object->config_load( '../../configs/en.conf', 'main' );
-      $object->config_load( 'en.conf', $config );
+#      $object->config_load( '../../configs/en.conf');
+      
+#     $object->config_load( 'en.conf', $config );
       
       if( is_file( '../configs/' . $curlang . '.conf' ) ) $object->config_load( '../../configs/' . $curlang . '.conf', 'main' );
       if( is_file( 'configs/' . $curlang . '.conf' ) ) $object->config_load( $curlang . '.conf', $config );
@@ -166,7 +208,8 @@ class WebTool {
    static function setDBVars() {
       global $toolserver_username, $toolserver_password;
 
-      $toolserver_mycnf = parse_ini_file("/data/project/xtools/replica.my.cnf");
+//      $toolserver_mycnf = parse_ini_file("/data/project/xtools/replica.my.cnf");
+      $toolserver_mycnf = parse_ini_file("/data/project/newwebtest/replica.my.cnf");
       $toolserver_username = $toolserver_mycnf['user'];
       $toolserver_password = $toolserver_mycnf['password'];
       unset($toolserver_mycnf);
@@ -398,10 +441,24 @@ class WebTool {
       }
    }
    
+   static function iin_array( $needle, $haystack ) {
+   	return in_array( strtoupper( $needle ), array_map( 'strtoupper', $haystack ) );
+   }
+   
+   static function in_string( $needle, $haystack ) {
+   	return strpos( $haystack, $needle ) !== false;
+   }
+   
+	static function showPage( &$wt ){
+		include '../templates/main.php';
+		unset($wt);
+		die;
+   }
+   
 }
 
-class FauxPHPTemp {
-   function get_config_vars( $var ) {
-      return $var;
-   }
-}
+// class FauxPHPTemp {
+//    function get_config_vars( $var ) {
+//       return $var;
+//    }
+// }

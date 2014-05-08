@@ -1,4 +1,5 @@
 <?php
 
-header("Location: //tools.wmflabs.org/xtools/pcount/");
+phpinfo();
+#header("Location: articleinfo/");
 

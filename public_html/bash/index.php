@@ -1,8 +1,9 @@
 <?php
 ini_set("display_errors", 1);
 //Requires
-	require_once( '/data/project/xtools/public_html/WebTool.php' );
-	require_once( '/data/project/xtools/public_html/bash/base.php' );
+//	require_once( '/data/project/xtools/public_html/WebTool.php' );
+	require_once( '/data/project/newwebtest/xtools/public_html/WebTool.php' );
+	require_once( '/data/project/newwebtest/xtools/public_html/bash/base.php' );
 
 //Load WebTool class
 	$wt = new WebTool( 'Bash', 'bash', array( 'getwikiinfo', 'peachy', 'database' ) );
@@ -17,7 +18,7 @@ ini_set("display_errors", 1);
 	}
 	
 	$base = new BashBase();
-	
+
 	switch( $wgRequest->getSafeVal( 'action' ) ) {
 		case 'random':
 			$quote = $base->getRandomQuote();

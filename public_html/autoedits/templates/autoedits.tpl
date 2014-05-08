@@ -5,7 +5,7 @@
 {if $form != ""}
 {assign var=begintime value='1'}
 <br />
-<form action="//tools.wmflabs.org/xtools/autoedits/index.php" method="get" accept-charset="utf-8">
+<form action="?" method="get" accept-charset="utf-8">
 <table>
 <tr><td>{#user#}: </td><td><input type="text" name="user" /></td></tr>
 <tr><td>{#wiki#}: </td><td><input type="text" value="{$form}" name="lang" size="9" />.<input type="text" value="wikipedia" size="10" name="wiki" />.org</td></tr>

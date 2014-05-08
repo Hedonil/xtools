@@ -1,4 +1,4 @@
-<?php /* Smarty version 2.6.18, created on 2013-08-30 12:33:14
+<?php /* Smarty version 2.6.18, created on 2014-04-26 12:07:44
          compiled from bash.tpl */ ?>
 <?php if ($this->_tpl_vars['error'] != ""): ?><br /><h2 class="alert"><?php echo $this->_tpl_vars['error']; ?>
 </h2><?php endif; ?>
@@ -7,7 +7,7 @@
 
 <?php if ($this->_tpl_vars['form'] != ""): ?>
 <br />
-<form action="//tools.wmflabs.org/xtools/bash/index.php" method="get" accept-charset="utf-8">
+<form action="?" method="get" accept-charset="utf-8">
 <table class="wikitable">
 <tr>
 	<td colspan="2"><input type="radio" name="action" value="random" checked="checked" /> <?php echo $this->_config[0]['vars']['random']; ?>

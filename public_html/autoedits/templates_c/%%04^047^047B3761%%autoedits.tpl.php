@@ -1,4 +1,4 @@
-<?php /* Smarty version 2.6.18, created on 2012-03-10 16:43:39
+<?php /* Smarty version 2.6.18, created on 2014-04-28 05:01:20
          compiled from autoedits.tpl */ ?>
 <?php if ($this->_tpl_vars['error'] != ""): ?><br /><h2 class="alert"><?php echo $this->_tpl_vars['error']; ?>
 </h2><?php endif; ?>
@@ -10,7 +10,7 @@
 <?php if ($this->_tpl_vars['form'] != ""): ?>
 <?php $this->assign('begintime', '1'); ?>
 <br />
-<form action="//tools.wmflabs.org/xtools/autoedits/index.php" method="get" accept-charset="utf-8">
+<form action="?" method="get" accept-charset="utf-8">
 <table>
 <tr><td><?php echo $this->_config[0]['vars']['user']; ?>
 : </td><td><input type="text" name="user" /></td></tr>
@@ -37,7 +37,7 @@
 <?php $_from = $this->_tpl_vars['data']; if (!is_array($_from) && !is_object($_from)) { settype($_from, 'array'); }if (count($_from)):
     foreach ($_from as $this->_tpl_vars['tool'] => $this->_tpl_vars['count']):
 ?>
-   <li><a href="http://<?php echo $this->_tpl_vars['url']; ?>
+   <li><a href="//<?php echo $this->_tpl_vars['url']; ?>
 /wiki/<?php echo $this->_tpl_vars['urls'][$this->_tpl_vars['tool']]; ?>
 "><?php echo $this->_tpl_vars['tool']; ?>
 </a> &ndash; <?php echo $this->_tpl_vars['count']; ?>
@@ -62,4 +62,4 @@
 %</td>
    </tr>
 </table>
-<?php endif; ?> 
+<?php endif; ?> 

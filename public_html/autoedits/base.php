@@ -39,10 +39,11 @@ class AutoEditsBase {
 
          try {
             $res = $dbr->select(
-               array( 'revision' ),
+               array( 'revision_userindex' ),
                array( 'COUNT(*) AS count' ),
                $conds
             );
+
             $contribs[$name] = $res[0]['count'];
          } catch( Exception $e ) {
             if( $api ) return array( 'error' => 'dberror', 'info' => $e->getMessage() );

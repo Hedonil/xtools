@@ -1,4 +1,4 @@
-<?php /* Smarty version 2.6.18, created on 2013-08-29 19:23:53
+<?php /* Smarty version 2.6.18, created on 2014-04-27 15:07:41
          compiled from ../../templates/mainSmarty.tpl */ ?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
         "//www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
@@ -56,7 +56,7 @@
 </a><?php endif; ?>
 <?php if ($this->_tpl_vars['souRce2'] != ""): ?> | <a href="<?php echo $this->_tpl_vars['source2']; ?>
 "><?php echo $this->_config[0]['vars']['source']; ?>
-</a><?php endif; ?> | <a href="https://webchat.freenode.net/?channels=#xlabs"><?php echo $this->_config[0]['vars']['bugs']; ?>
+</a><?php endif; ?> | <a href="https://webchat.freenode.net/?channels=#wikimedia-labs"><?php echo $this->_config[0]['vars']['bugs']; ?>
 </a></span>
 <a name="footer" />
 <?php if ($this->_tpl_vars['curlang'] != ""): ?><span id="footertext"><?php echo $this->_config[0]['vars']['language']; ?>

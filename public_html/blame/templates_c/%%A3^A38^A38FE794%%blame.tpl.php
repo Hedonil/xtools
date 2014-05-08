@@ -1,4 +1,4 @@
-<?php /* Smarty version 2.6.18, created on 2012-03-01 01:55:48
+<?php /* Smarty version 2.6.18, created on 2014-04-27 17:50:17
          compiled from blame.tpl */ ?>
 <?php if ($this->_tpl_vars['error'] != ""): ?><br /><h2 class="alert"><?php echo $this->_tpl_vars['error']; ?>
 </h2><?php endif; ?>
@@ -10,7 +10,7 @@
 <?php echo $this->_config[0]['vars']['welcome']; ?>
 
 <br /><br />
-<form action="//tools.wmflabs.org/xtools/blame/index.php" method="get" accept-charset="utf-8">
+<form action="?" method="get" accept-charset="utf-8">
 <table>
 <tr><td><?php echo $this->_config[0]['vars']['article']; ?>
 : </td><td><input type="text" name="article" /> <input type="checkbox" name="nofollowredir" /> <?php echo $this->_config[0]['vars']['nofollowredir']; ?>
@@ -37,4 +37,4 @@
 
 <?php endforeach; endif; unset($_from); ?>  
 </ul>
-<?php endif; ?> 
+<?php endif; ?> 

@@ -1,14 +1,15 @@
 <?php
 echo "<!--";
-	require_once( '/data/project/newwebtest/Peachy/Init.php' );
-	require_once( '/data/project/newwebtest/xtools/public_html/I18N.php' );
+ 	require_once( '/data/project/newwebtest/Peachy/Init.php' );
 echo "-->";
+	require_once( 'I18N.php' );
 
-function newWebTool( $toolname = null, $smarty_name = null, $dont = array() ) {
-   global $wt, $pgHTTP;
-   print_r($GLOBALS);
-   $wt = new WebTool( $toolname, $smarty_name, $dont );
-}
+
+// function newWebTool( $toolname = null, $smarty_name = null, $dont = array() ) {
+//    global $wt, $pgHTTP;
+//    print_r($GLOBALS);
+//    $wt = new WebTool( $toolname, $smarty_name, $dont );
+// }
 
 
 /**
@@ -17,6 +18,7 @@ function newWebTool( $toolname = null, $smarty_name = null, $dont = array() ) {
  *
  */
 class WebTool {
+	public $basePath = "//tools.wmflabs.org/newwebtest";
 	
 	public $moreheader;
 	public $alert;
@@ -147,7 +149,7 @@ class WebTool {
          $config['httpecho'] = true;
       }*/
 			echo "<!--";
-      $site = Peachy::newWiki( null, null, null, 'http://'.$url.'/w/api.php' );
+ #     $site = Peachy::newWiki( null, null, null, 'http://'.$url.'/w/api.php' );
 			echo "-->";
 	 }
    

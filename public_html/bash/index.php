@@ -1,62 +1,65 @@
 <?php
-ini_set("display_errors", 1);
+
 //Requires
-//	require_once( '/data/project/xtools/public_html/WebTool.php' );
-	require_once( '/data/project/newwebtest/xtools/public_html/WebTool.php' );
-	require_once( '/data/project/newwebtest/xtools/public_html/bash/base.php' );
+	require_once( '../WebTool.php' );
+	require_once( 'base.php' );
 
 //Load WebTool class
-	$wt = new WebTool( 'Bash', 'bash', array( 'getwikiinfo', 'peachy', 'database' ) );
-	/*UPDATE ME*/$wtSource = "//code.google.com/p/soxred93tools/source/browse/trunk/web/bash";
-	$wtTranslate = true;
-	WebTool::setMemLimit();
+	$wt = new WebTool( 'Bash', 'bash', array( 'getwikiinfo', 'database', 'smarty', 'sitenotice', 'replag') );
+	$base = new BashBase();
+	$wt->content = $base->getPageForm();
 
 //Show form if &article parameter is not set (or empty)
-	if( !$wgRequest->getSafeVal( 'getBool', 'action' ) ) {
-		$content->assign( 'form', true );
-		WebTool::assignContent();
+	if( !$wt->webRequest->getSafeVal( 'getBool', 'action' ) ) {
+		$wt->showPage($wt);
 	}
 	
-	$base = new BashBase();
 
-	switch( $wgRequest->getSafeVal( 'action' ) ) {
+	switch( $wt->webRequest->getSafeVal( 'action' ) ) {
 		case 'random':
 			$quote = $base->getRandomQuote();
 			
+			$otherurl = "//tools.wmflabs.org".$_SERVER['REQUEST_URI'];
+			$pageResult = '
+				<h3>'.$I18N->msg('quotenumber').' '.$quote['id'].'</h3>
+				<pre>'.$quote['quote'].'</pre>
+				<a href="'.$otherurl.'">'.$I18N->msg('showanother').'</a>
+			';
 			
-			$content->assign( 'random', true );
-			$content->assign( 'quote', $quote['quote'] );
-			$content->assign( 'id', $quote['id'] );
-			$phptemp->assign( 'page', $quote['id'] );
-			
-			$phptemp->assign( 'thisurl', "//tools.wmflabs.org".$_SERVER['REQUEST_URI'] );
 			break;
+			
 		case 'showall':
 			$quotes = $base->getAllQuotes();
 			
-			$content->assign( 'showall', true );
-			$content->assign( 'quotes', $quotes );
-			break;
-		case 'showone':
-			$quote = $base->getQuoteFromId( $wgRequest->getSafeVal( 'id' ) );
+			$pageResult = '<h3>'.$I18N->msg('allquotes').'</h3>';
+			foreach ( $quotes as $id => $quote ){
+				$pageResult .= '
+						<h3>'.$I18N->msg('quotenumber').' '.$id.'</h3>
+						<pre>'.$quote.'</pre>';
+			}
 			
-			$content->assign( 'showone', true );
-			$content->assign( 'quote', $quote['quote'] );
-			$content->assign( 'id', $quote['id'] );
-			$phptemp->assign( 'page', $quote['id'] );
 			break;
+			
 		case 'search':
 			$quotes = $base->getQuotesFromSearch( $wgRequest->getSafeVal( 'search' ), ( $wgRequest->getBool( 'regex' ) ) );
 			
-			$content->assign( 'search', true );
-			$content->assign( 'quotes', $quotes );
-			if( !count( $quotes ) ) $content->assign( 'error', $phptemp->get_config_vars( 'noresults') );
+			$pageResult = '<h3>'.$I18N->msg('searchresults').'</h3>';
+			foreach ( $quotes as $id => $quote ){
+				$pageResult .= '
+						<h3>'.$I18N->msg('quotenumber').' '.$id.'</h3>
+						<pre>'.$quote.'</pre>';
+			}
+			if( !count( $quotes ) ) {
+				$wt->error = $I18N->msg('noresults') ;
+				$pageResult = $base->getPageForm();
+			}
 			break;
+			
 		default:
-			WebTool::toDie( $phptemp->get_config_vars( 'invalidaction' ) );
+			$wt->showPage($wt);
 	}
 
-
-
-WebTool::finishScript();
-
+unset($base, $quotes);
+$wt->content = $pageResult;
+$wt->showPage($wt);
+	

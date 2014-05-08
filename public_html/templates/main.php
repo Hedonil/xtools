@@ -1,6 +1,5 @@
-
 <!DOCTYPE html>
-
+<html>
 <head>
 	<title>{if $page != ""}{$page} -{/if} {#tool#} - {#title#}</title>
 	<link rel="stylesheet" type="text/css" href="//tools.wmflabs.org/newwebtest/style.css" />
@@ -18,12 +17,13 @@
 	<div id="content">
 		<div id="navigation" class="center container">
 			<a href="//tools.wmflabs.org/xtools/">Home</a> &middot; 
-			<a href="//tools.wmflabs.org/xtools/ec">Edit counter</a> &middot; 
-			<a href="//tools.wmflabs.org/xtools/articleinfo/">Page History Statistics</a> &middot; 
-			<a href="//tools.wmflabs.org/xtools/blame">Article blamer</a> &middot; 
-			<a href="//tools.wmflabs.org/xtools/rangecontribs">CIDR</a> &middot; 
-			<a href="//tools.wmflabs.org/xtools/ipcalc">IP calculator</a> &middot; 
-			<a href="//wiki.toolserver.org/view/User:TParis/Index">Index</a>
+			<a href="<?php echo $wt->basePath?>/ec">Edit counter</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/articleinfo/">Page History Statistics</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/blame">Article blamer</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/pages">Pages created</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/rangecontribs">CIDR</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/bash">Random quote</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/ipcalc">IP calculator</a> &middot; 
 		</div>
 
 		<div id="alerts">

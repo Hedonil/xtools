@@ -2,7 +2,7 @@
 
 class RangecontribsBase{
 	
-	static function getMatchingIPs( $dbr, $ip_prefix ){
+	public function getMatchingIPs( $dbr, $ip_prefix ){
 		$query = "
 			SELECT rev_user_text, count(rev_user_text) as sum
 			FROM revision_userindex
@@ -22,7 +22,7 @@ class RangecontribsBase{
 	 * 
 	 * @return array $matchingIPs
 	 */
-	static function getIPInformation( &$matchingIPs, $http ){
+	public function getIPInformation( &$matchingIPs, $http ){
 		
 		$ranges = array();
 		$i = 0;
@@ -106,7 +106,7 @@ class RangecontribsBase{
 		return $list;
 	}
 	
-	public static function getRangeContribs( $dbr, $lang, $wiki, $matchingIPs, $ip_prefix, $cidr_info, $limit  ){
+	public function getRangeContribs( $dbr, $lang, $wiki, $matchingIPs, $ip_prefix, $cidr_info, $limit  ){
 		$wikibase = $lang.".".$wiki.".org";
 		
 		foreach ( $matchingIPs as $matchingIP ){
@@ -181,7 +181,7 @@ class RangecontribsBase{
 		return $list;
 	}
 	
-	public static function calcCIDR( $cidr ) {
+	public function calcCIDR( $cidr ) {
 		$cidr = explode('/', $cidr);
 	
 		$cidr_base = $cidr[0];
@@ -208,7 +208,7 @@ class RangecontribsBase{
 			);
 	}
 	
-	public static function calcRange( $iparray ) {
+	public function calcRange( $iparray ) {
 
 		$iparray = array_unique($iparray);
 		$iparray = array_map("ip2long",$iparray);
@@ -239,7 +239,7 @@ class RangecontribsBase{
 			);
 	}
 	
-	static function addZero ( $string ) {
+	public function addZero ( $string ) {
 		$count = 32 - strlen( $string );
 		for( $i = $count; $i>0; $i-- ) {
 			$string = "0" . $string;
@@ -247,7 +247,7 @@ class RangecontribsBase{
 		return $string;
 	}
 	
-	static function removeZero ( $string ) {
+	public function removeZero ( $string ) {
 		$string = str_split( $string, 1 );
 		foreach( $string as $val => $strchar ) {
 			if( $strchar == 1 ) break;
@@ -259,7 +259,7 @@ class RangecontribsBase{
 		return $string;
 	}
 	
-	static function findMatch( $ip1, $ip2 ) {
+	public function findMatch( $ip1, $ip2 ) {
 		$ip1 = str_split( $ip1, 1 );
 		$ip2 = str_split( $ip2, 1 );
 		 
@@ -273,7 +273,7 @@ class RangecontribsBase{
 		return $match;
 	}
 	
-	static function getPageForm( $lang="en", $wiki="wikipedia"){
+	public function getPageForm( $lang="en", $wiki="wikipedia" ){
 		global $I18N;
 		
 		$iprange = $I18N->msg('ip_range').": ";

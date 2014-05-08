@@ -1,3 +1,3 @@
-#!/bin/sh
+#!/bin/bash
 
-/bin/rm -f /data/project/xtools/public_html/articleinfo/data/*
+rm -rf /data/project/xtools/public_html/articleinfo/data/*

@@ -1,13 +1,14 @@
 <?php
 
 //Requires
-	require_once( '/data/project/newwebtest/xtools/public_html/WebTool.php' );
-	require_once( '/data/project/newwebtest/xtools/public_html/rangecontribs/base.php' );
+	require_once( '../WebTool.php' );
+	require_once( 'base.php' );
 
 //Load WebTool class
 	$wt = new WebTool( 'Range contributions', 'rangecontribs', array("smarty", "sitenotice", "replag") );
 	$wt->setMemLimit();
-	$wt->content = RangecontribsBase::getPageForm();
+	$base = new RangecontribsBase();
+	$wt->content = $base->getPageForm();
 	
 //Get query string params & make some checks
 	$cidr  = $wt->webRequest->getSafeVal( 'ips' );
@@ -30,26 +31,26 @@
 	}
 	
 	if( $type == 'range' ) {
-		$cidr_info = RangecontribsBase::calcCIDR( $cidr );
+		$cidr_info = $base->calcCIDR( $cidr );
 	}
 	elseif( $type == 'list' ) {
 		$cidr = explode( '\n', $cidr );
-		$cidr_info = RangecontribsBase::calcRange( $cidr );
+		$cidr_info = $base->calcRange( $cidr );
 	}
 	else {
 		$wt->error = $I18N->msg( 'invalid_type' );
 		$wt->showPage($wt);
 	}
 	
-	$ip_prefix = RangecontribsBase::findMatch( $cidr_info['begin'], $cidr_info['end'] );
+	$ip_prefix = $base->findMatch( $cidr_info['begin'], $cidr_info['end'] );
 
 //Get a list of unique, matching (existing) IP's
-	$matchingIPs = RangecontribsBase::getMatchingIPs($dbr, $ip_prefix);
+	$matchingIPs = $base->getMatchingIPs($dbr, $ip_prefix);
 	$http = new HTTP();
-	$ipList = RangecontribsBase::getIPInformation($matchingIPs, $http);
+	$ipList = $base->getIPInformation($matchingIPs, $http);
 
 //Start the calculation
-	$list = RangecontribsBase::getRangeContribs($dbr, $lang, $wiki, $matchingIPs, $ip_prefix, $cidr_info, $limit);
+	$list = $base->getRangeContribs($dbr, $lang, $wiki, $matchingIPs, $ip_prefix, $cidr_info, $limit);
 
 	
 // 	if ( $list ) {
@@ -83,7 +84,7 @@ $pageResult = '
 <br />
 ';
 
-unset( $ipList, $list );
+unset( $base, $ipList, $list );
 $wt->content = $pageResult;
 $wt->showPage($wt);
 

@@ -1,49 +1,41 @@
 <?php
 
 //Requires
-	require_once( '/data/project/newwebtest/xtools/public_html/WebTool.php' );
-	require_once( '/data/project/newwebtest/xtools/public_html/blame/base.php' );
-
-// set some global vars
-	$pgVerbose = false;
+	require_once( '../WebTool.php' );
+	require_once( 'base.php' );
 
 //Load WebTool class
-	$wt = new WebTool( 'Blame', 'blame', array( 'getwikiinfo', 'peachy', 'database' ) );
-	$wtTranslate = true;
-	WebTool::setMemLimit( 256 );
+	$wt = new WebTool( 'Blame', 'blame', array( 'getwikiinfo', 'database', "smarty", "sitenotice", "replag" ) );
+	WebTool::setMemLimit();
+	$base = new BlameBase();
+	$wt->content = $base->getPageForm();
 	
-	$siteNoticeClass = new siteNotice;
-	$sitenotice = $siteNoticeClass->checkSiteNoticeRaw();
-	if( $sitenotice ) {
-		$phptemp->assign( "alert", $sitenotice );
-	}
-
 // get params from query string
-	$lang = $wgRequest->getSafeVal( 'lang' );
-	$wiki = $wgRequest->getSafeVal( 'wiki' );
-	$article = $wgRequest->getSafeVal( 'article' );
-	$nofollowredir = $wgRequest->getBool( 'nofollowredir' );
+	$lang = $wt->webRequest->getSafeVal( 'lang' );
+	$wiki = $wt->webRequest->getSafeVal( 'wiki' );
+	$article = $wt->webRequest->getSafeVal( 'article' );
+	$nofollowredir = $wt->webRequest->getBool( 'nofollowredir' );
 	$text = isset($_GET["text"]) ? urldecode($_GET["text"]) : "";
 	
 	$wikibase = $lang.'.'.$wiki.'.org';
 	
 //Show form if &article parameter is not set (or empty)
 	if( $lang == "" || $wiki == "" || $article == "" || $text == "" ) {
-		$content->assign( 'form', 'en' );
-		WebTool::assignContent();
-		WebTool::toDie("");
+		$wt->showPage($wt);
 	}
 
 // execute the main logic
-	$revs = BlameBase::getBlameResult( $wikibase, $article, $nofollowredir, $text);
-	$content->assign( "revs", $revs );
-	
-//Calculate time taken to execute
-	$exectime = number_format(microtime( 1 ) - $time, 2, '.', '');
-	$phptemp->assign( "excecutedtime", "Executed in $exectime seconds" );
-	$phptemp->assign( "memory", "Taken ". number_format((memory_get_usage() / (1024 * 1024)), 2, '.', '')." megabytes of memory to execute." );
+	$revs = $base->getBlameResult( $wikibase, $article, $nofollowredir, $text);
+	$result = '<p>'.$I18N->msg('added').'</p><ul> ';
+	foreach ( $revs as $rev ){
+		$result .= $rev;
+	}
+	$result .= "</ul>";
+	$wt->content = $result;
 
 
-WebTool::assignContent();
-WebTool::finishScript();
+unset( $base, $result);
+$wt->showPage($wt);
+
+
 

@@ -1,5 +1,5 @@
 <?php
-
+//bb
 class BashBase {
 
 	var $quotes;
@@ -8,10 +8,17 @@ class BashBase {
 	public function __construct( $api = false ) {
 		global $pgHTTP;
 		
+<<<<<<< HEAD
 		if (!isset($pgHTTP)){
 			$pgHTTP =new HTTP();
 		}
 
+=======
+                if (!isset($pgHTTP)){
+                $pgHTTP =new HTTP();
+                }
+		
+>>>>>>> 33d38e26ade4df6d1af834ead1d2e7f0e063b12e
 		$text = $pgHTTP->get('http://meta.wikimedia.org/w/index.php?title=IRC/Quotes&action=raw&ctype=text/css', false);
 		
 		$text = explode('<pre><nowiki>', $text);

@@ -3,12 +3,14 @@
 //Requires
 	require_once( '../WebTool.php' );
 	require_once( 'base.php' );
-
+	
 //Load WebTool class
 	$wt = new WebTool( 'Pages', 'pages', array("smarty", "sitenotice", "replag") );
 	WebTool::setMemLimit();
 	$base = new PagesBase();
-	$wt->content = $base->getPageForm();
+	$wt->content = $base->tmplPageForm;
+	$wt->assign("lang", "en");
+	$wt->assign("wiki", "wikipedia");
 	
 //Show form if &article parameter is not set (or empty)
 	if( !$wt->webRequest->getSafeVal( 'getBool', 'user' ) ) {
@@ -33,32 +35,18 @@
 			 );	
 
 //Construct output
-	$filtertextNS = ( $result->filterns == "all" ) ? " in all namespaces." : " in namespace ".$wgRequest->getSafeVal('namespace').".";
-	$totalcreated = "User ".$userData["user_name"]." has created  $result->total  pages on ".$wgRequest->getSafeVal('lang').".".$wgRequest->getSafeVal('wiki').$filtertextNS ;
-
-	$wt->content = '	
-	<span>'.$totalcreated.'&nbsp;(Redirect filter: '.$result->filterredir.')</span>
-	<table>
-		<tr>
-		<td>
-		<table style="margin-top: 10px" >
-			<tr>
-				<th>NS</th>
-				<th>NS name</th>
-				<th>Pages</th>
-				<th style="padding_left:5px">&nbsp;&nbsp;(Redirects)</th>
-			</tr>
-			'.$result->listnamespaces.'
-		</table>
-		</td>
-		<td><img src="//chart.googleapis.com/chart?cht=p3&amp;chd=t:'.$result->listnum.'&amp;chs=550x140&amp;chl='.$result->listns.'&amp;chco=599ad3|f1595f|79c36a|f9a65a|727272|9e66ab|cd7058|ff0000|00ff00&amp;chf=bg,s,00000000" alt="minor" /></td>
-		</tr>
-	</table>
+	$filtertextNS = ( $result->filterns == "all" ) ? $I18N->msg('all') : $wgRequest->getSafeVal('namespace');
+	$wikibase = $wgRequest->getSafeVal('lang').".".$wgRequest->getSafeVal('wiki') ;
 	
-	<table class="sortable" >
-	'.$result->list.'
-	</table>
-	';		
+	$wt->content = $base->tmplPageResult;
+	$wt->assign( "totalcreated", $I18N->msg('user_total_created', array("variables" => array($userData["user_name"], $result->total, $wikibase) ) ) );
+	$wt->assign( "redirFilter", $I18N->msg('redirfilter_'.$wgRequest->getSafeVal('redirects') ) );
+	$wt->assign( "nsFilter", $filtertextNS );
+	$wt->assign( "namespace_overview", $result->listnamespaces );
+	$wt->assign( "chartValues", $result->listnum );
+	$wt->assign( "chartText", $result->listns );
+	$wt->assign( "resultDetails", $result->list );
 
-unset( $base, $result);
+unset( $base, $userData, $result );
 $wt->showPage($wt);
+

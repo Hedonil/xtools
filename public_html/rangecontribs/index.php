@@ -8,7 +8,9 @@
 	$wt = new WebTool( 'Range contributions', 'rangecontribs', array("smarty", "sitenotice", "replag") );
 	$wt->setMemLimit();
 	$base = new RangecontribsBase();
-	$wt->content = $base->getPageForm();
+	$wt->content = $base->tmplPageForm;
+	$wt->assign("lang", "en");
+	$wt->assign("wiki", "wikipedia");
 	
 //Get query string params & make some checks
 	$cidr  = $wt->webRequest->getSafeVal( 'ips' );
@@ -53,39 +55,17 @@
 	$list = $base->getRangeContribs($dbr, $lang, $wiki, $matchingIPs, $ip_prefix, $cidr_info, $limit);
 
 	
-// 	if ( $list ) {
-// 		$content->assign( 'showresult', true );
-// 		$content->assign( "list", $list );
-// 	}else {
-// 		$content->assign( "nocontribs", "1" );
-// 	}
-
-$cidr = $cidr_info['begin']."/".$cidr_info['suffix'];
-$ip_start = $cidr_info['begin'];
-$ip_end = $cidr_info['end'];
-$ip_number = $cidr_info['count'];
-$ip_found = count($matchingIPs);
-
-
-$pageResult = '
-<table>
-<tr><td><b>'.$I18N->msg('cidr').':	   </b></td><td>'.$cidr.'</td></tr>
-<tr><td><b>'.$I18N->msg('ip_start').': </b></td><td>'.$ip_start.'</td></tr>
-<tr><td><b>'.$I18N->msg('ip_end').':   </b></td><td>'.$ip_end.'</td></tr>
-<tr><td><b>'.$I18N->msg('ip_number').':</b></td><td>'.$ip_number.'</td></tr>
-<tr><td><b>'.$I18N->msg('ip_found').': </b></td><td>'.$ip_found.'</td></tr>
-</table>
-
-'.$ipList.'
-
-<table>
-'.$list.'
-</table>
-<br />
-';
+$wt->content = $base->tmplPageResult;
+	
+$wt->assign( "cidr", $cidr_info['begin']."/".$cidr_info['suffix']);
+$wt->assign( "ip_start", $cidr_info['begin']);
+$wt->assign( "ip_end", $cidr_info['end']);
+$wt->assign( "ip_number", $cidr_info['count']);
+$wt->assign( "ip_found", count($matchingIPs));
+$wt->assign( "ipList", $ipList);
+$wt->assign( "list", $list);
 
 unset( $base, $ipList, $list );
-$wt->content = $pageResult;
 $wt->showPage($wt);
 
 

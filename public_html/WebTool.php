@@ -35,6 +35,8 @@ class WebTool {
 	public $langLinks;
 	
 	public $webRequest;
+	
+	private $mOutput;
 
    function __construct( $toolname = null, $smarty_name = null, $dont = array() ) {
       global $wgRequest, $wtConfigTitle, $phptemp, $content, $time, $I18N;
@@ -450,13 +452,52 @@ class WebTool {
    static function in_string( $needle, $haystack ) {
    	return strpos( $haystack, $needle ) !== false;
    }
-   
-	static function showPage( &$wt ){
+	
+	public function showPage( &$wt ){
+		$this->translate_i18n();
 		include '../templates/main.php';
 		unset($wt);
 		die;
-   }
-   
+	}
+	
+	/**
+	 * Loads Intuition I18N object. Replaces {#these#} with the messages.
+	 * @param object $I18N - defined in class I18N
+	 * @param string $texdomain Intuition registered textdomain eg. 'supercount', default already set in object
+	 * @param string $currLang language to translate to, default set in object
+	 * @return void
+	 */
+	function translate_i18n( $textdomain=null, $currLang=null ) {
+		global $I18N;
+		
+		$textdomain = ( is_null($textdomain) ) ? $I18N->getDomain() : $textdomain;
+		$currLang = ( is_null($currLang) ) ? $I18N->getLang() : $currLang;
+	
+		$i18KeyArr = $I18N->listMsgs( $textdomain );
+		$i18opt = array(
+				"domain" => $textdomain,
+				"lang" => $currLang,
+				"variables" => array(1),
+				"parsemag" => true,
+		);
+		#	print_r($i18KeyArr);
+		foreach( $i18KeyArr as $i => $i18Key ) {
+			$this->content = str_ireplace( '{#'.$i18Key.'#}', $I18N->msg($i18Key, $i18opt ), $this->content );
+		}
+	}
+	
+	/**
+	 * Replaces {$something$} with some string. Also parses the isset function
+	 * @param string $name Variable to change
+	 * @param string $value What to change it to.
+	 * @return void
+	 */
+	function assign( $name, $value ) {
+		$this->content = str_replace( '{$'.$name.'$}'."\n", $value, $this->content );
+		$this->content = str_replace( '{$'.$name.'}', $value, $this->content );
+	
+		$this->content = str_ireplace( '{&isset: '.$name.' &}', '', $this->content );
+	}
 }
 
 // class FauxPHPTemp {

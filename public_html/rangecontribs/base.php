@@ -2,6 +2,13 @@
 
 class RangecontribsBase{
 	
+	public $tmplPageForm;
+	public $tmplPageResult;
+	
+	function __construct(){
+		$this->loadPageTemplates();
+	}
+	
 	public function getMatchingIPs( $dbr, $ip_prefix ){
 		$query = "
 			SELECT rev_user_text, count(rev_user_text) as sum
@@ -272,56 +279,63 @@ class RangecontribsBase{
 		 
 		return $match;
 	}
-	
-	public function getPageForm( $lang="en", $wiki="wikipedia" ){
-		global $I18N;
-		
-		$iprange = $I18N->msg('ip_range').": ";
-		$iplist = $I18N->msg('ip_list').": ";
-		$usage0 = $I18N->msg('rc_usage_0');
-		$usage1 = $I18N->msg('rc_usage_1');
-		$usage2 = $I18N->msg('rc_usage_2'); 
-		
-		$pageForm = '
 
-		<span>'.$usage0.'</span>
-		<ol>
-		<li>'.$iprange.$usage1.' 0.0.0.0/0</li>
-		<li>'.$iplist.$usage2.'</li>
-		</ol><br />
-		<form action="?" method="get">
-		<table>
-		<tr>
-			<td style="padding-left:5px" >Wiki: <input type="text" value="'.$lang.'" name="lang" size="9" />.<input type="text" value="'.$wiki.'" size="10" name="wiki" />.org</td>
-		</tr>
-		<tr>
-			<td style="padding-left:5px" >Limit:
-			<select name="limit">
-			<option value="50">50</option>
-			<option selected value="500" >500</option>
-			<option value="5000">5000</option>
-			</select>
-			</td>
-		</tr>
-		<tr></tr>
-		<tr>
-			<td style="padding-left:5px; display:inline" >
-			<span style="padding-right:20px">'.$iprange.'<input type="radio" name="type" value="range" /></span>
-			<span>'.$iplist.'<input type="radio" name="type" value="list" /></span>
-			</td>
-		</tr>
-		<tr>
-			<td><textarea name="ips" rows="10" cols="40"></textarea></td>
-		</tr>
-		<tr>
-			<td><input type="submit" value="'.$I18N->msg('submit').'"/></td>
-		</tr>
-		</table>
-		</form>
-		<br />
-		<hr />
-		';
+private function loadPageTemplates(){
 		
-		return $pageForm;
-	}
+$this->tmplPageForm = '
+	<span>{#rc_usage_0#}</span>
+	<ol>
+	<li>{#ip_range#}: &nbsp;{#rc_usage_1#} 0.0.0.0/0</li>
+	<li>{#ip_list#}: &nbsp;{#rc_usage_2#}</li>
+	</ol><br />
+	<form action="?" method="get">
+	<table>
+	<tr>
+		<td style="padding-left:5px" >Wiki: <input type="text" value="{$lang}" name="lang" size="9" />.<input type="text" value="{$wiki}" size="10" name="wiki" />.org</td>
+	</tr>
+	<tr>
+		<td style="padding-left:5px" >Limit:
+		<select name="limit">
+		<option value="50">50</option>
+		<option selected value="500" >500</option>
+		<option value="5000">5000</option>
+		</select>
+		</td>
+	</tr>
+	<tr></tr>
+	<tr>
+		<td style="padding-left:5px; display:inline" >
+		<span style="padding-right:20px">{#ip_range#}<input type="radio" name="type" value="range" /></span>
+		<span>{#ip_list#}<input type="radio" name="type" value="list" /></span>
+		</td>
+	</tr>
+	<tr>
+		<td><textarea name="ips" rows="10" cols="40"></textarea></td>
+	</tr>
+	<tr>
+		<td><input type="submit" value="{#submit#}"/></td>
+	</tr>
+	</table>
+	</form>
+	<br />
+	<hr />
+';
+
+$this->tmplPageResult = '
+	<table>
+		<tr><td><b>{#cidr#}: 	 </b></td><td>{$cidr}</td></tr>
+		<tr><td><b>{#ip_start#}: </b></td><td>{$ip_start}</td></tr>
+		<tr><td><b>{#ip_end#}:   </b></td><td>{$ip_end}</td></tr>
+		<tr><td><b>{#ip_number#}:</b></td><td>{$ip_number}</td></tr>
+		<tr><td><b>{#ip_found#}: </b></td><td>{$ip_found}</td></tr>
+	</table>
+		{$ipList}
+	<table>
+		{$list}
+	</table>
+	<br />
+';
+
+}
+
 }

@@ -2,6 +2,13 @@
 
 class PagesBase{
 	
+	public $tmplPageForm;
+	public $tmplPageResult;
+	
+	function __construct(){
+		$this->loadPageTemplates();
+	}
+	
 	public function getUserData( $dbr, $username ){
 		$query = "
 			SELECT user_name, user_id 
@@ -119,61 +126,84 @@ class PagesBase{
 
 		return $namespacenames;
 	}
-	
-	public function getPageForm( $lang="en", $wiki="wikipedia" ){
-		global $I18N;
-		
-		$selectns ='
-		<select name="namespace">
-			<option value="all">-All-</option>
-			<option value="0">Main</option>
-			<option value="1">Talk</option>
-			<option value="2">User</option>
-			<option value="3">User talk</option>
-			<option value="4">Wikipedia</option>
-			<option value="5">Wikipedia talk</option>
-			<option value="6">File</option>
-			<option value="7">File talk</option>
-			<option value="8">MediaWiki</option>
-			<option value="9">MediaWiki talk</option>
-			<option value="10">Template</option>
-			<option value="11">Template talk</option>
-			<option value="12">Help</option>
-			<option value="13">Help talk</option>
-			<option value="14">Category</option>
-			<option value="15">Category talk</option>
-			<option value="100">Portal</option>
-			<option value="101">Portal talk</option>
-			<option value="108">Book</option>
-			<option value="109">Book talk</option>
-		</select><br />
-      	';
-		
-		$selectredir ='
-		<select name="redirects">
-			<option value="none">Include redirects and non-redirects</option>
-			<option value="onlyredirects">Only include redirects</option>
-			<option value="noredirects">Exclude redirects</option>
-		</select><br />
-		';
-		
-		$pageForm= '
-		<form action="?" method="get" accept-charset="utf-8">
-		<table>
-		<tr><td>'.$I18N->msg('user').': </td><td><input type="text" name="user" /></td></tr>
-		<tr><td>'.$I18N->msg('wiki').': </td><td><input type="text" value="'.$lang.'" name="lang" size="9" />.<input type="text" value="'.$wiki.'" size="10" name="wiki" />.org</td></tr>
-		<tr><td>'.$I18N->msg('namespace').': </td><td>'.$selectns.'</td></tr>
-		<tr><td>'.$I18N->msg('redirects').': </td><td>'.$selectredir.'</td></tr>
-		<!-- 
-		<tr><td>'.$I18N->msg('start').': </td><td><input type="text" name="begin" /></td></tr>
-		<tr><td>'.$I18N->msg('end').': </td><td><input type="text" name="end" /></td></tr>
-		-->
-		<tr><td colspan="2"><input type="submit" value="'.$I18N->msg('submit').'" /></td></tr>
-		</table>
-		</form><br />
-		';
 
-		return $pageForm;
-	}
+	
+private function loadPageTemplates(){
+		
+$tmp_selectns ='
+	<select name="namespace">
+		<option value="all">-All-</option>
+		<option value="0">Main</option>
+		<option value="1">Talk</option>
+		<option value="2">User</option>
+		<option value="3">User talk</option>
+		<option value="4">Wikipedia</option>
+		<option value="5">Wikipedia talk</option>
+		<option value="6">File</option>
+		<option value="7">File talk</option>
+		<option value="8">MediaWiki</option>
+		<option value="9">MediaWiki talk</option>
+		<option value="10">Template</option>
+		<option value="11">Template talk</option>
+		<option value="12">Help</option>
+		<option value="13">Help talk</option>
+		<option value="14">Category</option>
+		<option value="15">Category talk</option>
+		<option value="100">Portal</option>
+		<option value="101">Portal talk</option>
+		<option value="108">Book</option>
+		<option value="109">Book talk</option>
+	</select><br />
+';
+		
+$tmp_selectredir ='
+	<select name="redirects">
+		<option value="none">{#include_redirects#}</option>
+		<option value="onlyredirects">{#only_redirects#}</option>
+		<option value="noredirects">{#exclude_redirects#}</option>
+	</select><br />
+';
+		
+$this->tmplPageForm = '
+	<form action="?" method="get" accept-charset="utf-8">
+	<table>
+		<tr><td>{#user#}: </td><td><input type="text" name="user" /></td></tr>
+		<tr><td>{#wiki#}: </td><td><input type="text" value="{$lang}" name="lang" size="9" />.<input type="text" value="{$wiki}" size="10" name="wiki" />.org</td></tr>
+		<tr><td>{#namespace#}: </td><td>'.$tmp_selectns.'</td></tr>
+		<tr><td>{#redirects#}: </td><td>'.$tmp_selectredir.'</td></tr>
+		<!--
+		<tr><td>{#start#}: </td><td><input type="text" name="begin" /></td></tr>
+		<tr><td>{#end#}: </td><td><input type="text" name="end" /></td></tr>
+		-->
+		<tr><td colspan="2"><input type="submit" value="{#submit#}" /></td></tr>
+	</table>
+	</form><br />
+';
+		
+$this->tmplPageResult = '
+	<span>{$totalcreated}&nbsp;({#namespace#}: {$nsFilter}, {#redirects#}: {$redirFilter} )</span>
+	<table>
+		<tr>
+		<td>
+		<table style="margin-top: 10px" >
+			<tr>
+				<th>NS</th>
+				<th>NS name</th>
+				<th>Pages</th>
+				<th style="padding_left:5px">&nbsp;&nbsp;(Redirects)</th>
+			</tr>
+			{$namespace_overview}
+		</table>
+		</td>
+		<td><img src="//chart.googleapis.com/chart?cht=p3&amp;chd=t:{$chartValues}&amp;chs=550x140&amp;chl={$chartText}&amp;chco=599ad3|f1595f|79c36a|f9a65a|727272|9e66ab|cd7058|ff0000|00ff00&amp;chf=bg,s,00000000" alt="minor" /></td>
+		</tr>
+	</table>
+		
+	<table class="sortable" >
+	{$resultDetails}
+	</table>
+';
+
+}
 	
 }

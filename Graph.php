@@ -36,7 +36,6 @@ class Graph {
 	}
 	
 	function pie( $title = '', $bgcolor = "00000000" ) {
-		global $phptemp;
 		
 		$url = "//chart.googleapis.com/chart?cht=p3&chd=t:";
 		
@@ -64,7 +63,7 @@ class Graph {
 		
 		$url .= "&chf=bg,s,$bgcolor";	
 		
-		return "<img src=\"".str_replace('&', '&amp;',$url)."\" alt=\"". $phptemp->getConf( 'graphalt' ) ."\" />";
+		return "<img src=\"".str_replace('&', '&amp;',$url)."\" alt=alt />";
 	}
 	
 	function horizontalBarForYear( $data, $width = 500 ) {
@@ -252,10 +251,12 @@ class Graph {
 		$ret = "<table $table>\n";
 		foreach( $this->mNames as $id => $namespace ) {
 			if( !$this->mGross[$id] ) continue;
-			$ret .= "<tr $tr><td $td style=\"border: 1px solid #000;background:#{$this->mColors[$id]};\" >" . 
-				$namespace . 
-				"</td><td $td>".$this->mGross[$id]."</td><td $td>" . 
-				$pcts[$id] . "%</td></tr>\n";
+			$ret .= "
+					<tr $tr>
+					<td $td style=\"border: 1px solid #000;background:#{$this->mColors[$id]};\" >".$namespace."</td>
+					<td $td style='text-align:right; padding-left:10px'>".$this->mGross[$id]."</td>
+					<td $td style='text-align:right; padding-left:10px'>".$pcts[$id]. "%</td>
+					</tr>\n";
 		}
 		$ret .= "</table>";
 		
@@ -263,7 +264,7 @@ class Graph {
 	}
 	
 	function getMonthPopup( $month ) {
-		global $wgNamespaces, $phptemp;
+		global $wgNamespaces; // $phptemp;
 		
 		$out = "<table>";
 		
@@ -279,7 +280,7 @@ class Graph {
 				$out .= "<tr>";
 				$e = 1;
 			}
-			$out .= "<td>" . $wgNamespaces['names'][$ns_id] . "</td><td style=\"border-left: 1px solid #aaa;border-right: 1px solid #aaa;\">$count " . $phptemp->getConf( 'edits' ) . "</td><td>$sum%</td>";
+			$out .= "<td>" . $wgNamespaces['names'][$ns_id] . "</td><td style=\"border-left: 1px solid #aaa;border-right: 1px solid #aaa;\">$count " .  'edits' . "</td><td>$sum%</td>";
 			$out .= "</tr>";
 			//echo $phptemp->getConf( 'edits' ) . "<br />";
 		}

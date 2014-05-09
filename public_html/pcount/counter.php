@@ -44,11 +44,19 @@ class Counter {
 		$this->getCounts();
 		
 		$this->getGroups();
-		
+	
 		$this->getStats();
+
 	}
+
+	
+	function checkIP() {
+		$this->mIP = ( long2ip( ip2long( $this->mName ) ) == $this->mName ) ? true : false;
+	}
+
 	
 	function checkExists() {
+		global $perflog; $start = microtime(true);
 		global $dbr;
 		
 		if( $this->mIP ) {
@@ -57,18 +65,9 @@ class Counter {
 		}
 		else {
 			
-			$res = Database::mysql2array( $dbr->select(
-				'user',
-				'user_id',
-				array(
-					array(
-						'user_name',
-						'=',
-						$this->mName
-					)
-				)
-			));
-			
+			$res = $dbr->query("Select user_id FROM user WHERE user_name = '$this->mName' ");
+			$res = $res->endArray;
+
 			if( !count( $res ) ) {
 				$this->mExists = false;
 				$this->mUID = 0;
@@ -80,50 +79,32 @@ class Counter {
 			
 			unset($res);
 		}
+		$perflog->add('checkExists', microtime(true)-$start );
 	}
-	
-	function checkIP() {
-		$this->mIP = ( long2ip( ip2long( $this->mName ) ) == $this->mName ) ? true : false;
-	}
+
 	
 	function getCounts() {
+		global $perflog; $start = microtime(true);
 		global $dbr;
 		
-		$res = Database::mysql2array( $dbr->select(
-			'archive_userindex',
-			'COUNT(*) AS count',
-			array(
-				array(
-					'ar_user_text',
-					'=',
-					$this->mName
-				)
-			)
-		));
-		
+		$res = $dbr->query("SELECT COUNT(*) AS count FROM archive_userindex WHERE ar_user_text = '$this->mName' "); 
+		$res = $res->endArray;
+				
 		$this->mDeleted = $res[0]['count'];
 		
-		
-		$res = Database::mysql2array( $dbr->select(
-			'revision_userindex',
-			'COUNT(*) AS count',
-			array(
-				array(
-					'rev_user_text',
-					'=',
-					$this->mName
-				)
-			)
-		));
+		$res = $dbr->query("SELECT COUNT(*) AS count FROM revision_userindex WHERE rev_user = '$this->mUID' AND rev_timestamp > 1 ");
+		$res = $res->endArray;
 		
 		$this->mLive = $res[0]['count'];
 		
 		$this->mTotal = $this->mLive + $this->mDeleted;
 		
 		unset($res);
+		$perflog->add(__FUNCTION__, microtime(true)-$start );
 	}
 	
 	function getGroups() {
+		global $perflog; $start = microtime(true);
 		global $dbr;
 		
 		if( $this->mIP || !$this->mExists ) {
@@ -131,18 +112,9 @@ class Counter {
 		}
 		else {
 			
-			$res = Database::mysql2array( $dbr->select(
-				'user_groups',
-				'ug_group',
-				array(
-					array(
-						'ug_user',
-						'=',
-						$this->mUID
-					)
-				)
-			));
-						
+			$res = $dbr->query("SELECT ug_group FROM user_groups WHERE ug_user = '$this->mUID' ");
+			$res = $res->endArray;
+			
 			if( !count( $res ) ) {
 				$this->mGroups = array();
 			}
@@ -155,38 +127,21 @@ class Counter {
 			
 			unset($res);
 		}
+		$perflog->add(__FUNCTION__, microtime(true)-$start );
 	}
 	
 	function getStats() {
+		global $perflog; $start = microtime(true);
 		global $dbr, $wgNamespaces;
 		
-		$res = $dbr->select(
-			array(
-				'revision_userindex',
-				'page'
-			),
-			array(
-				'rev_timestamp',
-				'page_title',
-				'page_namespace',
-				'rev_comment'
-			),
-			array(
-				array(
-					'rev_user_text',
-					'=',
-					$this->mName
-				)
-			),
-			array(
-				'SLOW OK' => 1,
-				'RUN_LIMIT' => '60 NM',
-				'ORDER BY' => 'rev_timestamp ASC'
-			),
-			array(
-				'page_id' => 'rev_page'
-			)
-		);
+		$res = $dbr->query("
+				SELECT rev_timestamp, page_title, page_namespace, rev_comment 
+				FROM revision_userindex 
+				JOIN page ON page_id = rev_page 
+				WHERE rev_user_text = '$this->mName' /*SLOW_OK RUN_LIMIT 60 NM*/ 
+				ORDER BY rev_timestamp ASC
+			");
+		$res = $res->endArray;
 		
 		$base_ns = array();
 
@@ -195,7 +150,7 @@ class Counter {
 			$base_ns[$id] = 0;
 		}
 		
-		while( $row = mysql_fetch_assoc( $res ) ) {
+		foreach ( $res as $u => $row ) {
 			$this->mNamespaceTotals[ $row['page_namespace'] ]++;
 			
 			$timestamp = substr( $row['rev_timestamp'], 0, 4 ) . '/' . substr( $row['rev_timestamp'], 4, 2 );
@@ -248,6 +203,7 @@ class Counter {
 		}
 
 		unset($res);
+		$perflog->add(__FUNCTION__, microtime(true)-$start );
 	}
 	
 	function getMonthTotals() {

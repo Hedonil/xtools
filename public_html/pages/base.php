@@ -158,9 +158,9 @@ $tmp_selectns ='
 		
 $tmp_selectredir ='
 	<select name="redirects">
-		<option value="none">{#include_redirects#}</option>
-		<option value="onlyredirects">{#only_redirects#}</option>
-		<option value="noredirects">{#exclude_redirects#}</option>
+		<option value="none">{#redirfilter_none#}</option>
+		<option value="onlyredirects">{#redirfilter_onlyredirects#}</option>
+		<option value="noredirects">{#redirfilter_noredirects#}</option>
 	</select><br />
 ';
 		

@@ -1,15 +1,18 @@
 <?php
+
+class perflog {
+	public $stack = array();
+	
+	function add( $modul, $time ){
+		array_push( $this->stack, array("modul" => $modul, "time" => $time));
+	}
+}
+$perflog = new perflog();
+
 echo "<!--";
  	require_once( '/data/project/newwebtest/Peachy/Init.php' );
 echo "-->";
 	require_once( 'I18N.php' );
-
-
-// function newWebTool( $toolname = null, $smarty_name = null, $dont = array() ) {
-//    global $wt, $pgHTTP;
-//    print_r($GLOBALS);
-//    $wt = new WebTool( $toolname, $smarty_name, $dont );
-// }
 
 
 /**
@@ -155,49 +158,49 @@ class WebTool {
 			echo "-->";
 	 }
    
-   static function initSmarty( $config_title ) {
-      global $phptemp, $content, $language, $curlang, $langlinks;
+//    static function initSmarty( $config_title ) {
+//       global $phptemp, $content, $language, $curlang, $langlinks;
       
-      $backtrace = debug_backtrace();
-      if( !isset( $backtrace[0]['file'] ) ) {
-         self::toDie( "File backtrace not found." );
-      }
+//       $backtrace = debug_backtrace();
+//       if( !isset( $backtrace[0]['file'] ) ) {
+//          self::toDie( "File backtrace not found." );
+//       }
     
-      $langs = glob( dirname( $backtrace[1]['file'] ) . '/configs/*.conf' );
-      $langs = array_merge( $langs, glob( dirname( $backtrace[1]['file'] ) . '/../configs/*.conf' ) );
+//       $langs = glob( dirname( $backtrace[1]['file'] ) . '/configs/*.conf' );
+//       $langs = array_merge( $langs, glob( dirname( $backtrace[1]['file'] ) . '/../configs/*.conf' ) );
       
-      foreach( $langs as $k => $newlang ) {
-         $langs[$k] = str_replace( array( dirname( $backtrace[1]['file'] ) . '/configs/', dirname( $backtrace[1]['file'] ) . '/../configs/', '.conf' ), '', $newlang );
-         if( $langs[$k] == "qqq" ) unset( $langs[$k] );
-      }
+//       foreach( $langs as $k => $newlang ) {
+//          $langs[$k] = str_replace( array( dirname( $backtrace[1]['file'] ) . '/configs/', dirname( $backtrace[1]['file'] ) . '/../configs/', '.conf' ), '', $newlang );
+//          if( $langs[$k] == "qqq" ) unset( $langs[$k] );
+//       }
       
-      $langs = array_unique( $langs );
+//       $langs = array_unique( $langs );
 
-      $language = new Language( $langs );
-      $curlang = $language->getLang();
+//       $language = new Language( $langs );
+//       $curlang = $language->getLang();
       
-      $langlinks = $language->generateLangLinks();
+//       $langlinks = $language->generateLangLinks();
       
-      self::addSmartyObj( $phptemp, $config_title );
-      self::addSmartyObj( $content, $config_title );
+//       self::addSmartyObj( $phptemp, $config_title );
+//       self::addSmartyObj( $content, $config_title );
       
-      $phptemp->assign( "curlang", $curlang );
-      $phptemp->assign( "langlinks", $langlinks );
-   }
+//       $phptemp->assign( "curlang", $curlang );
+//       $phptemp->assign( "langlinks", $langlinks );
+//    }
    
-   static function addSmartyObj( &$object, $config ) {
-      global $curlang;
+//    static function addSmartyObj( &$object, $config ) {
+//       global $curlang;
       
-      $object = new Smarty();
-      $object->config_load( '../../configs/en.conf', 'main' );
-#      $object->config_load( '../../configs/en.conf');
+//       $object = new Smarty();
+//       $object->config_load( '../../configs/en.conf', 'main' );
+// #      $object->config_load( '../../configs/en.conf');
       
-#     $object->config_load( 'en.conf', $config );
+// #     $object->config_load( 'en.conf', $config );
       
-      if( is_file( '../configs/' . $curlang . '.conf' ) ) $object->config_load( '../../configs/' . $curlang . '.conf', 'main' );
-      if( is_file( 'configs/' . $curlang . '.conf' ) ) $object->config_load( $curlang . '.conf', $config );
+//       if( is_file( '../configs/' . $curlang . '.conf' ) ) $object->config_load( '../../configs/' . $curlang . '.conf', 'main' );
+//       if( is_file( 'configs/' . $curlang . '.conf' ) ) $object->config_load( $curlang . '.conf', $config );
       
-   }
+//    }
    
    static function checkSitenotice() {
       global $content;
@@ -454,9 +457,11 @@ class WebTool {
    }
 	
 	public function showPage( &$wt ){
+		global $perflog;
 		$this->translate_i18n();
 		include '../templates/main.php';
 		unset($wt);
+		print_r( $perflog->stack );
 		die;
 	}
 	
@@ -493,15 +498,11 @@ class WebTool {
 	 * @return void
 	 */
 	function assign( $name, $value ) {
-		$this->content = str_replace( '{$'.$name.'$}'."\n", $value, $this->content );
+		$this->content = str_replace( '{$'.$name.'$}', $value, $this->content );
 		$this->content = str_replace( '{$'.$name.'}', $value, $this->content );
 	
 		$this->content = str_ireplace( '{&isset: '.$name.' &}', '', $this->content );
 	}
 }
 
-// class FauxPHPTemp {
-//    function get_config_vars( $var ) {
-//       return $var;
-//    }
-// }
+

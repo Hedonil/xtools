@@ -1,175 +1,70 @@
 <?php
-//header('Content-Type: text/html; charset=utf-8');
-//error_reporting(E_ALL);
-//ini_set('display_errors','On');
-/*
-Soxred93's Edit Counter
-Copyright (C) 2010 Soxred93
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+//Requires
+	require_once( '../WebTool.php' );
+	require_once( 'base.php' );
+	
+//**************
+  $start2 = microtime(true);
+//**************
+	
+//Load WebTool class
+	$wt = new WebTool( 'Pages', 'pages', array("smarty", "sitenotice", "replag") );
+	WebTool::setMemLimit();
+	$base = new PcountBase();
+	$wt->content = $base->tmplPageForm;
+	$wt->assign("lang", "en");
+	$wt->assign("wiki", "wikipedia");
+	
+//Show form if &article parameter is not set (or empty)
+	if( !$wt->webRequest->getSafeVal( 'getBool', 'user' ) ) {
+		$wt->showPage($wt);
+	}
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <//www.gnu.org/licenses/>.
-*/
-
-//die("Down for maintenance!");
-
-$time = microtime( 1 );//Calculate time in microseconds to calculate time taken to execute
-
-//error_reporting(E_ERROR);
-ini_set("display_errors", 1);
-ini_set("memory_limit", '512M');
 $opt_in = array();
 $opt_out = array();
 $no_opt = array();
 $default = 'optin';
 
-require_once( '/data/project/xtools/stats.php' );
-require_once( '/data/project/xtools/GlobalFunctions.php' );
 
-$tool = 'EditCounter';
-$surl = "//tools.wmflabs.org".$_SERVER['REQUEST_URI'];
-
-if (isset($_GET['wiki']) && isset($_GET['lang']) && isset($_GET['name'])) {
-    if( isset($_SERVER['HTTP_REFERER']) ) $refer = $_SERVER['HTTP_REFERER'];
-    else $refer = "none";
-    addStat( $tool, $surl, $refer, $_SERVER['HTTP_USER_AGENT'] );//Stat checking
-}
-unset($tool, $surl);
-
-require_once( '/data/project/xtools/public_html/phptemp/PHPtemp.php' );
-require_once( '/data/project/xtools/public_html/phptemp/Language.php' );
-require_once( '/data/project/xtools/public_html/sitenotice.php' );
-
-$langs = glob("/data/project/xtools/public_html/pcount/configs/*.conf");
-
-foreach( $langs as $k => $newlang ) {
-   $langs[$k] = str_replace( array( '/data/project/xtools/public_html/pcount/configs/', '.conf' ), '', $newlang );
-   if( $langs[$k] == "qqq" ) unset( $langs[$k] );
-}
-
-$language = new Language( $langs );
-$lang = $language->getLang();
-
-$phptemp = new PHPtemp( '/data/project/xtools/public_html/templates/main.tpl' );
-
-if( in_string( 'iPhone', $_SERVER['HTTP_USER_AGENT'] ) && $lang == "en" && !isset( $_GET['nophone'] ) ) {
-    define( 'IPHONE', true );
-    $phptemp = new PHPtemp( '/data/project/xtools/public_html/templates/iphone.tpl' );
-    $content = new PHPtemp( '/data/project/xtools/public_html/pcount/templates/iphone.tpl' );
-}
-else {
-    define( 'IPHONE', false );
-    $phptemp = new PHPtemp( '/data/project/xtools/public_html/templates/main.tpl' );
-    $content = new PHPtemp( '/data/project/xtools/public_html/pcount/templates/pcount.tpl' );
-}
+// if( in_string( 'iPhone', $_SERVER['HTTP_USER_AGENT'] ) && $lang == "en" && !isset( $_GET['nophone'] ) ) {
+//     define( 'IPHONE', true );
+//     $phptemp = new PHPtemp( '/data/project/xtools/public_html/templates/iphone.tpl' );
+//     $content = new PHPtemp( '/data/project/xtools/public_html/pcount/templates/iphone.tpl' );
+// }
+// else {
+//     define( 'IPHONE', false );
+//     $phptemp = new PHPtemp( '/data/project/xtools/public_html/templates/main.tpl' );
+//     $content = new PHPtemp( '/data/project/xtools/public_html/pcount/templates/pcount.tpl' );
+// }
 
 
+#require_once( '../counter_commons/Functions.php' );
+require_once( 'counter.php' );
 
-$langlinks = $language->generateLangLinks();
+require_once( '../../Graph.php' );
+#require_once( '/data/project/xtools/database.inc' );
 
-if( is_file( '/data/project/xtools/public_html/configs/'.$lang.'.conf' ) ) {
-   $phptemp->load_config( '/data/project/xtools/public_html/configs/'.$lang.'.conf', 'main' );
-   $content->load_config( '/data/project/xtools/public_html/configs/'.$lang.'.conf', 'main' );
-}
-else {
-   $phptemp->load_config( '/data/project/xtools/public_html/configs/en.conf', 'main' );
-   $content->load_config( '/data/project/xtools/public_html/configs/en.conf', 'main' );
-}
-$phptemp->load_config( '/data/project/xtools/public_html/pcount/configs/'.$lang.'.conf', 'pcount' );
-$content->load_config( '/data/project/xtools/public_html/pcount/configs/'.$lang.'.conf', 'pcount' );
 
-$phptemp->assign( "header", $phptemp->getConf('tool') );
+#$fnc = new Functions;
 
-$phptemp->assign( "curlang", $lang );
-$phptemp->assign( "langlinks", $langlinks );
-$phptemp->assign( "source2", "//tools.wmflabs.org/xtools/pcount/source.php" );
 
-$uselang = ( $lang == "en" ) ? "" : "&uselang=$lang";
-$phptemp->assign( "translate", "//tools.wmflabs.org/xtools/translate/index.php?usetool=Editcounter" . $uselang );
+$name = $wgRequest->getSafeVal('user');
+$wiki = $wgRequest->getSafeVal('wiki');
+$lang = $wgRequest->getSafeVal('lang');
 
-$siteNoticeClass = new siteNotice;
-$sitenotice = $siteNoticeClass->checkSiteNoticeRaw();
-if( $sitenotice ) {
-   $phptemp->assign( "alert", $sitenotice );
-}
-
-require_once( '/data/project/xtools/public_html/counter_commons/HTTP.php' );
-require_once( '/data/project/xtools/public_html/counter_commons/Database.php' );
-require_once( '/data/project/xtools/public_html/counter_commons/Functions.php' );
-require_once( '/data/project/xtools/public_html/pcount/counter.php' );
-require_once( '/data/project/xtools/Graph.php' );
-require_once( '/data/project/xtools/database.inc' );
-
-$wgDBPort = 3306;
-$wgDBUser = $toolserver_username;
-$wgDBPass = $toolserver_password;
-
-$fnc = new Functions;
-
-if( !isset( $_GET['name'] ) ) {
-   $content->assign( 'form', $lang );
-   $fnc->assignContent();
-}
-
-$name = ucfirst( ltrim( rtrim( str_replace( array('&#39;','%20'), array('\'',' '), $_GET['name'] ) ) ) );
-$name = urldecode($name);
-//$name = iconv("windows-1251","utf-16", $name);
-$name = str_replace('_', ' ', $name);
-$name = str_replace('<', '&lt', $name);
-$name = str_replace('>', '&gt;', $name);
-$name = str_replace('/', '', $name);
-$wiki = $_GET['wiki'];
-$lang = $_GET['lang'];
-$lang = str_replace('/', '', $lang);
-$wiki = str_replace('/', '', $wiki);
 $url = $lang.'.'.$wiki.'.org';
+$wikibase = $url;
 if( $wiki == 'wikidata' ) {
     $lang = 'www';
     $wiki = 'wikidata';
     $url = 'www.wikidata.org';
 }
-$http = new HTTP( 'http://'.$url.'/w/' );
 
-/*$tdbr = new Database(
-   'sql-toolserver',
-   $wgDBPort,
-   $wgDBUser,
-   $wgDBPass,
-   'toolserver',
-   true
-);*/
-
-$dbInfo = $fnc->getDBInfo( $lang, $wiki );
-if( isset( $dbInfo['error'] ) && $wiki != "wikidata" ) {
-   $fnc->toDie( $phptemp->getConf( 'nowiki', $url ) );
-}
-
- $wgDBname = $dbInfo['dbname'];
- $wgDBserver = $dbInfo['server'];
-
-$dbr = new Database(
-   $wgDBserver,
-   $wgDBPort,
-   $wgDBUser,
-   $wgDBPass,
-   $wgDBname,
-   true
-);
-
-if( $dbInfo['server'] == 1 ) {
-   $fnc->toDie( "In order to both discourage editcountitis and give the English Wikipedia editors a chance to realize what editing is all about and why I created this tool in the first place, I have disabled my edit counters (pcount, simplecount, autoedits) until August 17 2010. Please use this time to reflect on why I made this tool in the first place: To serve curiosity, not to create false judgement descisions about editors. -X! 13 August 2010" );
-}
-
-$wgNamespaces = $fnc->getNamespaces('enwiki_p');
+$base->http = new HTTP();
+$base->baseurl = 'http://'.$wikibase.'/w/';
+$wgNamespaces = $base->getNamespaces();
 
 $cnt = new Counter( $name );
 
@@ -252,56 +147,67 @@ $graph = new Graph( $graphArray, IPHONE );
 $uniqueEdits = $cnt->getUniqueArticles();
 
 if( !$cnt->getExists() ) {
-   $fnc->toDie( $phptemp->getConf( 'nosuchuser', $cnt->getName() ) );
+   $wt->error = $I18N->msg('nosuchuser')." ".$cnt->getName();
+   $wt->showPage($wt);
 }
 
-$phptemp->assign( "page", $cnt->getName() );
-$content->assign( "username", $cnt->getName() );
-$content->assign( "usernameurl", rawurlencode($cnt->getName()) );
-$content->assign( "url", $url );
-$content->assign( "loadwiki", "&wiki=$wiki&lang=$lang" );
+  $perflog->add('2- init', microtime(true)-$start2 );
+//**************************
+  $start3 = microtime(true);
+//**************************
+
+$wt->content = $base->tmplPageResult;
+#$phptemp->assign( "page", $cnt->getName() );
+$wt->assign( "username", $cnt->getName() ); 
+$wt->assign( "usernameurl", rawurlencode($cnt->getName()) );
+$wt->assign( "url", $url );
+$wt->assign( "loadwiki", "&wiki=$wiki&lang=$lang" );
+
 if( count( $cnt->getGroupList() ) ) {
-   $content->assign( "groups", implode( ', ', $cnt->getGroupList() ) );
+   $wt->assign( "groups", implode( ', ', $cnt->getGroupList() ) );
 }
 if( $cnt->getLive() > 0) {
 
-   $content->assign( "firstedit", $cnt->getFirstEdit() );
-   $content->assign( "unique", number_format( count($uniqueEdits['total']) ) );
-   $content->assign( "average", $cnt->getAveragePageEdits() );
-   $content->assign( "live", number_format( intval( $cnt->getLive() ) ) );
-   $content->assign( "deleted", number_format( intval( $cnt->getDeleted() ) ) );
+   $wt->assign( "firstedit", $cnt->getFirstEdit() );
+   $wt->assign( "unique", number_format( count($uniqueEdits['total']) ) );
+   $wt->assign( "average", $cnt->getAveragePageEdits() );
+   $wt->assign( "live", number_format( intval( $cnt->getLive() ) ) );
+   $wt->assign( "deleted", number_format( intval( $cnt->getDeleted() ) ) );
 
-   $content->assign( "namespacetotals", $graph->legend() );
-   $content->assign( "graph", $graph->pie( $phptemp->getConf( 'namespacetotals' ) ) );
+   $wt->assign( "namespacetotals", $graph->legend() );
+   $wt->assign( "graph", $graph->pie( $I18N->msg('namespacetotals') ) );
       
 		if( in_array($lang.$wiki, $opt_in) ) {
-				if( $http->isOptedIn( $cnt->getName() ) ) $content->assign( "monthcounts", $graph->horizontalBar( 600 ) );
-				else $content->assign( "nograph", $phptemp->getConf( "nograph", $cnt->getName(), $url ) );   
-		} elseif( in_array($lang.$wiki, $opt_out) ) {
-				if( !$http->isOptedOut( $cnt->getName() ) ) $content->assign( "monthcounts", $graph->horizontalBar( 600 ) );
-				else $content->assign( "nograph", $phptemp->getConf( "nograph2", $cnt->getName(), $url ) );
-		} elseif( in_array($lang.$wiki, $no_opt) ) $content->assign( "monthcounts", $graph->horizontalBar( 600 ) );
+				if( $base->isOptedIn( $cnt->getName() ) ) $wt->assign( "monthcounts", $graph->horizontalBar( 600 ) );
+				else $wt->assign( "nograph", $I18N->msg( "nograph", array( "variables"=> array( $cnt->getName(), $url) )) );   
+		} 
+		elseif( in_array($lang.$wiki, $opt_out) ) {
+				if( !$base->isOptedOut( $cnt->getName() ) ) $wt->assign( "monthcounts", $graph->horizontalBar( 600 ) );
+				else $wt->assign( "nograph", $I18N->msg( "nograph2", array( "variables"=> array( $cnt->getName(), $url) )) );
+		} 
+		elseif( in_array($lang.$wiki, $no_opt) ) $wt->assign( "monthcounts", $graph->horizontalBar( 600 ) );
 		else {
 				//global default
 				switch( $default ) {
 						case 'optin':
-							if( $http->isOptedIn( $cnt->getName() ) ) $content->assign( "monthcounts", $graph->horizontalBar( 600 ) );
-							else $content->assign( "nograph", $phptemp->getConf( "nograph", $cnt->getName(), $url ) );
+							if( $base->isOptedIn( $cnt->getName() ) ) $wt->assign( "monthcounts", $graph->horizontalBar( 600 ) );
+							else $wt->assign( "monthcounts", $I18N->msg( "nograph", array( "variables"=> array( $cnt->getName(), $url) )) );
 							break;
 						case 'optout':
-							if( !$http->isOptedOut( $cnt->getName() ) ) $content->assign( "monthcounts", $graph->horizontalBar( 600 ) );
-							else $content->assign( "nograph", $phptemp->getConf( "nograph2", $cnt->getName(), $url ) );
+							if( !$base->isOptedOut( $cnt->getName() ) ) $wt->assign( "monthcounts", $graph->horizontalBar( 600 ) );
+							else $wt->assign( "monthcounts", $I18N->msg( "nograph2", array( "variables"=> array( $cnt->getName(), $url) )) );
 							break;
 						case 'noopt':
-							$content->assign( "monthcounts", $graph->horizontalBar( 600 ) );
+							$wt->assign( "monthcounts", $graph->horizontalBar( 600 ) );
 							break;
 						default:
-							$content->assign( "monthcounts", $graph->horizontalBar( 600 ) );
+							$wt->assign( "monthcounts", $graph->horizontalBar( 600 ) );
 							break;
 				}
 		}
 
    $out = null;
+   
    if( $cnt->getLive() < '500000' ) {
       ksort($uniqueEdits['namespace_specific']);
 
@@ -341,55 +247,48 @@ if( $cnt->getLive() > 0) {
       }
       
       if( in_array($lang.$wiki, $opt_in) ) {
-          if( $http->isOptedIn( $cnt->getName() ) ) $content->assign( "topedited", $out );
-          else $content->assign( "nograph", $phptemp->getConf( "nograph", $cnt->getName(), $url ) );   
-      } elseif( in_array($lang.$wiki, $opt_out) ) {
-          if( !$http->isOptedOut( $cnt->getName() ) ) $content->assign( "topedited", $out );
-          else $content->assign( "nograph", $phptemp->getConf( "nograph2", $cnt->getName(), $url ) );
-      } elseif( in_array($lang.$wiki, $no_opt) ) $content->assign( "topedited", $out );
+          if( $base->isOptedIn( $cnt->getName() ) ) $wt->assign( "topedited", $out );
+          else $wt->assign( "nograph", $I18N->msg( "nograph", array( "variables"=> array( $cnt->getName(), $url) )) );   
+      } 
+      elseif( in_array($lang.$wiki, $opt_out) ) {
+          if( !$base->isOptedOut( $cnt->getName() ) ) $wt->assign( "topedited", $out );
+          else $wt->assign( "nograph", $I18N->msg( "nograph2", array( "variables"=> array( $cnt->getName(), $url) )) );
+      } 
+      elseif( in_array($lang.$wiki, $no_opt) ) $wt->assign( "topedited", $out );
       else {
           //global default
           switch( $default ) {
               case 'optin':
-                if( $http->isOptedIn( $cnt->getName() ) ) $content->assign( "topedited", $out );
-                else $content->assign( "nograph", $phptemp->getConf( "nograph", $cnt->getName(), $url ) );
+                if( $base->isOptedIn( $cnt->getName() ) ) $wt->assign( "topedited", $out );
+                else $wt->assign( "topedited", $I18N->msg( "nograph", array( "variables"=> array( $cnt->getName(), $url) )) );
                 break;
               case 'optout':
-                if( !$http->isOptedOut( $cnt->getName() ) ) $content->assign( "topedited", $out );
-                else $content->assign( "nograph", $phptemp->getConf( "nograph2", $cnt->getName(), $url ) );
+                if( !$base->isOptedOut( $cnt->getName() ) ) $wt->assign( "topedited", $out );
+                else $wt->assign( "topedited", $I18N->msg( "nograph2", array( "variables"=> array( $cnt->getName(), $url) )) );
                 break;
               case 'noopt':
-                $content->assign( "topedited", $out );
+				$wt->assign( "topedited", $out );
                 break;
               default:
-                $content->assign( "topedited", $out );
+                $wt->assign( "topedited", $out );
                 break;
           }
       }
             
    }
    else {
-      $content->assign( "notopedit", "" );
+      $wt->assign( "topedited", $I18N->msg('notopedit') );
    }
 }
-$content->assign( "total", number_format( intval( $cnt->getTotal() ) ) );
+$wt->assign( "total", number_format( intval( $cnt->getTotal() ) ) );
 
-$times = $fnc->calcTimes( $time );
-
-$phptemp->assign( "moreheader",
+$wt->moreheader =
    '<link rel="stylesheet" href="//tools.wmflabs.org/xtools/counter_commons/NavFrame.css" type="text/css" />' . "\n\t" .
    '<script src="//bits.wikimedia.org/skins-1.5/common/wikibits.js?urid=257z32_1264870003" type="text/javascript"></script>' . "\n\t" .
    '<script src="//tools.wmflabs.org/xtools/counter_commons/NavFrame.js" type="text/javascript"></script>'
-);
-$content->assign( "popup", true );
+;
+$wt->assign( "popup", true );
 
-$replag = $fnc->getReplag();
+$perflog->add('output', microtime(true)-$start3 );
 
-if ($replag[0] > 120) {
-   $content->assign( 'replag', $phptemp->getConf( 'highreplag', $replag[1] ) );
-}
-
-$phptemp->assign( "executedtime", $phptemp->getConf( 'executed', $times['time'] ) );
-$phptemp->assign( "content", $content->display( true ) );
-
-$phptemp->display();
+$wt->showPage($wt);

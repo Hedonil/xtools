@@ -1,12 +1,14 @@
 <?php
+//**************
+  $start1 = microtime(true);
+//**************
 
 //Requires
 	require_once( '../WebTool.php' );
 	require_once( 'base.php' );
+	require_once( 'counter.php' );
+	require_once( '../../Graph.php' );
 	
-//**************
-  $start2 = microtime(true);
-//**************
 	
 //Load WebTool class
 	$wt = new WebTool( 'Pages', 'pages', array("smarty", "sitenotice", "replag") );
@@ -28,43 +30,27 @@ $no_opt = array();
 $default = 'optin';
 
 
-// if( in_string( 'iPhone', $_SERVER['HTTP_USER_AGENT'] ) && $lang == "en" && !isset( $_GET['nophone'] ) ) {
-//     define( 'IPHONE', true );
-//     $phptemp = new PHPtemp( '/data/project/xtools/public_html/templates/iphone.tpl' );
-//     $content = new PHPtemp( '/data/project/xtools/public_html/pcount/templates/iphone.tpl' );
-// }
-// else {
-//     define( 'IPHONE', false );
-//     $phptemp = new PHPtemp( '/data/project/xtools/public_html/templates/main.tpl' );
-//     $content = new PHPtemp( '/data/project/xtools/public_html/pcount/templates/pcount.tpl' );
-// }
-
-
-#require_once( '../counter_commons/Functions.php' );
-require_once( 'counter.php' );
-
-require_once( '../../Graph.php' );
-#require_once( '/data/project/xtools/database.inc' );
-
-
-#$fnc = new Functions;
-
-
-$name = $wgRequest->getSafeVal('user');
-$wiki = $wgRequest->getSafeVal('wiki');
-$lang = $wgRequest->getSafeVal('lang');
+$name = str_replace("_", " ", urldecode($wgRequest->getVal('user')));
+$wiki = $wgRequest->getVal('wiki');
+$lang = $wgRequest->getVal('lang');
 
 $url = $lang.'.'.$wiki.'.org';
 $wikibase = $url;
 if( $wiki == 'wikidata' ) {
     $lang = 'www';
     $wiki = 'wikidata';
-    $url = 'www.wikidata.org';
+    $wikibase= $url = 'www.wikidata.org';
 }
 
 $base->http = new HTTP();
 $base->baseurl = 'http://'.$wikibase.'/w/';
 $wgNamespaces = $base->getNamespaces();
+
+//***************
+  $perflog->add('1- init', microtime(true)- $start1);
+//**************
+  $start2 = microtime(true);
+//**************
 
 $cnt = new Counter( $name );
 
@@ -151,7 +137,8 @@ if( !$cnt->getExists() ) {
    $wt->showPage($wt);
 }
 
-  $perflog->add('2- init', microtime(true)-$start2 );
+//**************************
+  $perflog->add('2- after-init', microtime(true)-$start2 );
 //**************************
   $start3 = microtime(true);
 //**************************
@@ -289,6 +276,8 @@ $wt->moreheader =
 ;
 $wt->assign( "popup", true );
 
-$perflog->add('output', microtime(true)-$start3 );
+//**************************
+  $perflog->add('3- output', microtime(true)-$start3 );
+//**************************
 
 $wt->showPage($wt);

@@ -6,7 +6,8 @@
 	
 //Load WebTool class
 	$wt = new WebTool( 'Pages', 'pages', array("smarty", "sitenotice", "replag") );
-	WebTool::setMemLimit();
+	$wt->setMemLimit();
+	
 	$base = new PagesBase();
 	$wt->content = $base->tmplPageForm;
 	$wt->assign("lang", "en");

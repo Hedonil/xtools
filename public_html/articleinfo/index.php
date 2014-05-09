@@ -1,34 +1,39 @@
 <?php
 	
 //Requires
-	require_once( '/data/project/xtools/public_html/WebTool.php' );
-	require_once( '/data/project/xtools/public_html/articleinfo/base.php' );
+	require_once( '../WebTool.php' );
+	require_once( 'base.php' );
 
-	ini_set("display_errors", 1);
-	ini_set("memory_limit", '512M');
+
 //Load WebTool class
-	$wt = new WebTool( 'ArticleInfo', 'articleinfo' );
-	/*Update me*/$wtSource = "//code.google.com/p/soxred93tools/source/browse/trunk/web/articleinfo";
-	$wtTranslate = true;
-	WebTool::setMemLimit();
+	$wt = new WebTool( 'ArticleInfo', 'articleinfo', array("smarty", "sitenotice", "replag") );
+	$wt->setMemLimit();
+	
+	$base = new ArticleInfoBase();
+	$wt->content = $base->tmplPageForm;
+	$wt->assign("lang", "en");
+	$wt->assign("wiki", "wikipedia");
+	
+	$lang = $wgRequest->getSafeVal( "lang");
+	$wiki = $wgRequest->getSafeVal( "wiki");
+	$url = $lang.".".$wiki;
 
 //Show form if &article parameter is not set (or empty)
 	if( !$wgRequest->getSafeVal( 'getBool', 'article' ) ) {
-		$content->assign( 'form', $curlang );
-		WebTool::assignContent();
+		$wt->showPage($wt);
 	}
 	
 //Now load configs for the graph templates
-	$linegraph = new Smarty();
-	$sizegraph = new Smarty();
-	if( is_file( 'configs/' . $curlang . '.conf' ) ) {
-		$linegraph->config_load( $curlang . '.conf', 'articleinfo' );
-		$sizegraph->config_load( $curlang . '.conf', 'articleinfo' );
-	}
-	else {
-		$linegraph->config_load( 'en.conf', 'articleinfo' );
-		$sizegraph->config_load( 'en.conf', 'articleinfo' );
-	}
+// 	$linegraph = new Smarty();
+// 	$sizegraph = new Smarty();
+// 	if( is_file( 'configs/' . $curlang . '.conf' ) ) {
+// 		$linegraph->config_load( $curlang . '.conf', 'articleinfo' );
+// 		$sizegraph->config_load( $curlang . '.conf', 'articleinfo' );
+// 	}
+// 	else {
+// 		$linegraph->config_load( 'en.conf', 'articleinfo' );
+// 		$sizegraph->config_load( 'en.conf', 'articleinfo' );
+// 	}
 
 
 //Set the article variables
@@ -38,6 +43,8 @@
 
 //Initialize Peachy
 	try {
+#		$site = Peachy::newWiki( null, null, null, 'http://'.$url.'/w/api.php' );
+
 		$pageClass = $site->initPage( $article, null, !$wgRequest->getSafeVal( 'getBool', 'nofollowredir' ) );
 	} catch( BadTitle $e ) {
 		WebTool::toDie( $phptemp->get_config_vars( 'nosuchpage', $e->getTitle() ) );
@@ -47,12 +54,15 @@
 
 
 //Check for page existance
-	$phptemp->assign( "page", $pageClass->get_title() );
+	$wt->assign( "title", $pageClass->get_title() );
 	
-	if( !$pageClass->exists() ) WebTool::toDie( $phptemp->get_config_vars( 'nosuchpage', $pageClass->get_title() ) );
+	if( !$pageClass->exists() ) {
+		$wt->error= $I18N->msg( 'nosuchpage' )." ".$article;
+		$wt->showPage($wt);
+	}
 
 //Start doing the DB request
-	$history = Base::getVars( 
+	$history = $base->getVars( 
 		$pageClass, 
 		$site, 
 		$wgRequest->getSafeVal( 'getBool', 'nofollowredir' ),
@@ -60,13 +70,19 @@
 		( $wgRequest->getSafeVal( 'getBool', 'end' ) ) ? $wgRequest->getSafeVal( 'end' ) : false
 	);
 	
-	if( !count( $history ) ) WebTool::toDie( $phptemp->get_config_vars( 'norevisions' ) );
-	if( count( $history ) == 50000 ) $content->assign( "notice", $phptemp->get_config_vars( 'toomanyrevisions' ) );
+	if( !count( $history ) ) {
+		$wt->error = $I18N->msg( 'norevisions' ); 
+		$wt->showPage($wt);
+	}
+	if( count( $history ) == 50000 ) {
+		$wt->error = $I18N->msg( 'toomanyrevisions' ) ;
+		$wt->showPage($wt);
+	}
 
 
 //Get logs, for Edits over Time graph
 	
-	$data = Base::parseHistory( 
+	$data = $base->parseHistory( 
 		$history, 
 		( $wgRequest->getSafeVal( 'getBool', 'begin' ) ) ? $wgRequest->getSafeVal( 'begin' ) : false, 
 		( $wgRequest->getSafeVal( 'getBool', 'end' ) ) ? $wgRequest->getSafeVal( 'end' ) : false, 
@@ -76,191 +92,160 @@
 
 
 //Now we can assign the Smarty variables!
-	$content->assign( "info", true );
-		$content->assign( "page", $pageClass->get_title() );
-		$content->assign( "urlencodedpage", str_replace( '+', '_', urlencode( $pageClass->get_title() ) ) );
-		$content->assign( "totaledits", number_format( $data['count'] ) );
-		$content->assign( "minoredits", number_format( $data['minor_count'] ) );
-		$content->assign( "minoredits", number_format( $data['minor_count'] ) );
-		$content->assign( "anonedits", number_format( $data['anon_count'] ) );
-		$content->assign( "minorpct", number_format( ( $data['minor_count'] / $data['count'] ) * 100, 2 ) );
-		$content->assign( "anonpct", number_format( ( $data['anon_count'] / $data['count'] ) * 100, 2 ) );
-		$content->assign( "firstedit", date( 'd F Y, H:i:s', strtotime( $data['first_edit']['timestamp'] ) ) );
-		$content->assign( "firstuser", $data['first_edit']['user'] );
-		$content->assign( "lastedit", date( 'd F Y, H:i:s', strtotime( $data['last_edit'] ) ) );
-		$content->assign( "timebwedits", $data['average_days_per_edit'] );
-		$content->assign( "editspermonth", $data['edits_per_month'] );
-		$content->assign( "editsperyear", $data['edits_per_year'] );
-		$content->assign( "lastday", number_format( $data['count_history']['today'] ) );
-		$content->assign( "lastweek", number_format( $data['count_history']['week'] ) );
-		$content->assign( "lastmonth", number_format( $data['count_history']['month'] ) );
-		$content->assign( "lastyear", number_format( $data['count_history']['year'] ) );
-		$content->assign( "editorcount", number_format( $data['editor_count'] ) );
-		$content->assign( "editsperuser", $data['edits_per_editor'] );
-		$content->assign( "toptencount", number_format( $data['top_ten']['count'] ) );
-		$content->assign( "toptenpct", number_format( ( $data['top_ten']['count'] / $data['count'] ) * 100, 2 ) );
+	$wt->content = $base->tmplPageResult;
+		$wt->assign( "page", $pageClass->get_title() );
+		$wt->assign( "urlencodedpage", str_replace( '+', '_', urlencode( $pageClass->get_title() ) ) );
+		$wt->assign( "totaledits", number_format( $data['count'] ) );
+		$wt->assign( "minoredits", number_format( $data['minor_count'] ) );
+		$wt->assign( "minoredits", number_format( $data['minor_count'] ) );
+		$wt->assign( "anonedits", number_format( $data['anon_count'] ) );
+		$wt->assign( "minorpct", number_format( ( $data['minor_count'] / $data['count'] ) * 100, 2 ) );
+		$wt->assign( "anonpct", number_format( ( $data['anon_count'] / $data['count'] ) * 100, 2 ) );
+		$wt->assign( "firstedit", date( 'd F Y, H:i:s', strtotime( $data['first_edit']['timestamp'] ) ) );
+		$wt->assign( "firstuser", $data['first_edit']['user'] );
+		$wt->assign( "lastedit", date( 'd F Y, H:i:s', strtotime( $data['last_edit'] ) ) );
+		$wt->assign( "timebwedits", $data['average_days_per_edit'] );
+		$wt->assign( "editspermonth", $data['edits_per_month'] );
+		$wt->assign( "editsperyear", $data['edits_per_year'] );
+		$wt->assign( "lastday", number_format( $data['count_history']['today'] ) );
+		$wt->assign( "lastweek", number_format( $data['count_history']['week'] ) );
+		$wt->assign( "lastmonth", number_format( $data['count_history']['month'] ) );
+		$wt->assign( "lastyear", number_format( $data['count_history']['year'] ) );
+		$wt->assign( "editorcount", number_format( $data['editor_count'] ) );
+		$wt->assign( "editsperuser", $data['edits_per_editor'] );
+		$wt->assign( "toptencount", number_format( $data['top_ten']['count'] ) );
+		$wt->assign( "toptenpct", number_format( ( $data['top_ten']['count'] / $data['count'] ) * 100, 2 ) );
 	
+		$wt->assign( "graphanonpct", number_format( ( $data['anon_count'] / $data['count'] ) * 100, 2 ) );
+		$wt->assign( "graphuserpct", number_format( 100 - ( ( $data['anon_count'] / $data['count'] ) * 100 ), 2 ) );
+		$wt->assign( "graphminorpct", number_format( ( $data['minor_count'] / $data['count'] ) * 100, 2 ) );
+		$wt->assign( "graphmajorpct", number_format( 100 - ( ( $data['minor_count'] / $data['count'] ) * 100 ), 2 ) );
+		$wt->assign( "graphtoptenpct", number_format( ( $data['top_ten']['count'] / $data['count'] ) * 100, 2 ) );
+		$wt->assign( "graphbottomninetypct", number_format( 100 - ( ( $data['top_ten']['count'] / $data['count'] ) * 100 ), 2 ) );
 	
-	$content->assign( "graphs", true );
-		$content->assign( "graphanonpct", number_format( ( $data['anon_count'] / $data['count'] ) * 100, 2 ) );
-		$content->assign( "graphuserpct", number_format( 100 - ( ( $data['anon_count'] / $data['count'] ) * 100 ), 2 ) );
-		$content->assign( "graphminorpct", number_format( ( $data['minor_count'] / $data['count'] ) * 100, 2 ) );
-		$content->assign( "graphmajorpct", number_format( 100 - ( ( $data['minor_count'] / $data['count'] ) * 100 ), 2 ) );
-		$content->assign( "graphtoptenpct", number_format( ( $data['top_ten']['count'] / $data['count'] ) * 100, 2 ) );
-		$content->assign( "graphbottomninetypct", number_format( 100 - ( ( $data['top_ten']['count'] / $data['count'] ) * 100 ), 2 ) );
-	
-	$content->assign( "yeargraph", true );
-		$content->assign( "yearcounts", $data['year_count'] );
-		$content->assign( "yearpixels", getYearPixels( $data['year_count'] ) );
-		$content->assign( "pixelcolors", array( 'all' => '008800', 'anon' => '55FF55', 'minor' => 'FFFF55' ) );
-	
-	$content->assign( "linegraph", true );
-		$linegraph->assign( "data", $data['year_count'] );
-		$linegraph->assign( "eventdata", $logs );
-		$content->assign( "linegraphdata", md5( $pageClass->get_title() . '-' . $pageClass->get_id() ) );
-		file_put_contents( 'data/' . md5( $pageClass->get_title() . '-' . $pageClass->get_id() ) . '.xml', $linegraph->fetch( 'linegraph.tpl' ));
-		chmod( 'data/' . md5( $pageClass->get_title() . '-' . $pageClass->get_id() ) . '.xml', 0775);
-	
-	$content->assign( "monthgraph", true );
-		$content->assign( "monthpixels", getMonthPixels( $data['year_count'] ) );
-		$content->assign( "evenyears", getEvenYears( array_keys( $data['year_count'] ) ) );
-	
-	$content->assign( "sizegraph", true );
-		$sizegraph->assign( "data", $data['year_count'] );
-		$content->assign( "sizegraphdata", md5( $pageClass->get_title() . '-' . $pageClass->get_id() . '-line' ) );
-		file_put_contents( 'data/' . md5( $pageClass->get_title() . '-' . $pageClass->get_id()  . '-line' ) . '.xml', $sizegraph->fetch( 'sizegraph.tpl' ));
-		chmod( 'data/' . md5( $pageClass->get_title() . '-' . $pageClass->get_id()  . '-line' ) . '.xml', 0775);
 		
-	$content->assign( "usertable", true );
-		$content->assign( "userdata", $data['editors'] );
-		$content->assign( "topteneditors", $data['top_fifty'] );
-		$content->assign( "url", $url );
-		$content->assign( "lang", $lang );
-		$content->assign( "wiki", $wiki );
-
-
-WebTool::finishScript();
-
-
-//Script finished, now we're on to the functions
-
-//Calculate how many pixels each year should get for the Edits per Year table
-	function getYearPixels( &$data ) {
-		$month_total_edits = array();
-		foreach( $data as $year => $tmp ) {
-			$month_total_edits[$year] = $tmp['all'];
-		}
+		//Year counts
+		$yearpixels = $base->getYearPixels( $data['year_count'] );
+		$pixelcolors = array( 'all' => '008800', 'anon' => '55FF55', 'minor' => 'FFFF55' );
+		$wt->assign( "pixelcolors", $pixelcolors );
 		
-		$max_width = max( $month_total_edits );
-		
-		$pixels = array();
-		foreach( $data as $year => $tmp ) {
-			if( $tmp['all'] == 0 ) $pixels[$year] = array();
-			
-			$processarray = array( 'all' => $tmp['all'], 'anon' => $tmp['anon'], 'minor' => $tmp['minor'] );
-			
-			asort( $processarray );
-			
-			foreach( $processarray as $type => $count ) {
-				$newtmp = ceil( 500 * ( $count ) / $max_width );
-				$pixels[$year][$type] = $newtmp;
+		$list = '
+			<tr>
+			<th>{#year#}</th>
+			<th>{#count#}</th>
+			<th>{#ips#}</th>
+			<th>{#minor#}</th>
+			<th>{#graph#} &mdash; <span style="background-color:#'.$pixelcolors["anon"].';border: 1px solid #000;padding: 0 0.3em 0 0.3em;">{#ips#}</span> &mdash; <span style="background-color:#'.$pixelcolors["minor"].';border: 1px solid #000;padding: 0 0.3em 0 0.3em;">{#minor#}</span> &mdash; <span style="background-color:#'.$pixelcolors["all"].';border: 1px solid #000;padding: 0 0.3em 0 0.3em;">{#alledits#}</span></th>
+			</tr>
+		  ';
+		foreach ( $data['year_count'] as $key => $val ){
+			$list .= '
+			<tr>
+			<td class="date">'.$key.'</td>
+			<td>'.$val["all"].'</td>
+			<td>'.$val["anon"].' ('.$val["pcts"]["anon"].'%)</td>
+			<td>'.$val["minor"].' ('.$val["pcts"]["minor"].'%)</td>
+			<td>
+		 ';
+			if ( $val["all"] != 0 ){
+				$list .= '
+				<div class="outer_bar" style="height:150%;background-color:#'.$pixelcolors["all"].';width:'.$yearpixels[$key]["all"].'px;">
+				<div class="bar" style="height:50%;border-left:'.$yearpixels[$key]["anon"].'px solid #'.$pixelcolors["anon"].'"></div>
+				<div class="bar" style="height:50%;border-left:'.$yearpixels[$key]["minor"].'px solid #'.$pixelcolors["minor"].'"></div>
+				</div>
+			  ';
 			}
-		}
 		
-		return $pixels;
-	}
-
-//Calculate how many pixels each month should get for the Edits per Month table
-	function getMonthPixels( &$data ) {
-		$month_total_edits = array();
-		foreach( $data as $year => $tmp ) {
-			foreach( $tmp['months'] as $month => $newdata ) {
-				$month_total_edits[ $month.'/'.$year ] = $newdata['all'];
-			}
+			$list .= '</td></tr>';
 		}
+		$wt->assign( "yearcountlist", $list);
+		unset($list);
+		
 	
-		$max_width = max( $month_total_edits );
+// 	$content->assign( "linegraph", true );
+// 		$linegraph->assign( "data", $data['year_count'] );
+// 		$linegraph->assign( "eventdata", $logs );
+// 		$content->assign( "linegraphdata", md5( $pageClass->get_title() . '-' . $pageClass->get_id() ) );
+// 		file_put_contents( 'data/' . md5( $pageClass->get_title() . '-' . $pageClass->get_id() ) . '.xml', $linegraph->fetch( 'linegraph.tpl' ));
+// 		chmod( 'data/' . md5( $pageClass->get_title() . '-' . $pageClass->get_id() ) . '.xml', 0775);
+	
+		$monthpixels = $base->getMonthPixels( $data['year_count'] );
+		$wt->assign( "monthpixels", $monthpixels );
+		$wt->assign( "evenyears", $base->getEvenYears( array_keys( $data['year_count'] ) ) );
 		
-		$pixels = array();
-		foreach( $data as $year => $tmp ) {
-			foreach( $tmp['months'] as $month => $newdata ) {
-				if( $tmp['all'] == 0 ) $pixels[$year][$month] = array();
-				
-				$processarray = array( 'all' => $newdata['all'], 'anon' => $newdata['anon'], 'minor' => $newdata['minor'] );
-				
-				asort( $processarray );
-				
-				foreach( $processarray as $type => $count ) {
-					$newtmp = ceil( ( 500 * ( $count ) / $max_width ) );
-					$pixels[$year][$month][$type] = $newtmp;
+		$list = '';
+		foreach ( $data['year_count'] as $key => $val ){
+			$list .= '
+			<tr>
+			<th>{#month#}</th>
+			<th>{#count#}</th>
+			<th>{#ips#}</th>
+			<th>{#minor#}</th>
+			<th>{#graph#} &mdash; <span style="background-color:#'.$pixelcolors["anon"].';border: 1px solid #000;padding: 0 0.3em 0 0.3em;">{#ips#}</span> &mdash; <span style="background-color:#'.$pixelcolors["minor"].';border: 1px solid #000;padding: 0 0.3em 0 0.3em;">{#minor#}</span> &mdash; <span style="background-color:#'.$pixelcolors["all"].';border: 1px solid #000;padding: 0 0.3em 0 0.3em;">{#alledits#}</span></th>
+			</tr>
+		   ';
+			foreach ( $val["months"] as $month => $info ){
+				$list .= '
+				<tr>
+				<td class="date">'.$month.'/'.$key.'</td>
+				<td>'.$info["all"].'</td>
+				<td>'.$info["anon"].' ('.$info["pcts"]["anon"].'%)</td>
+				<td>'.$info["minor"].' ('.$info["pcts"]["minor"].'%)</td>
+				<td>';
+				if ( $info["all"] != 0 ){
+					$list .= '
+					<div class="outer_bar" style="height:150%;background-color:#'.$pixelcolors["all"].';width:'.$monthpixels[$key][$month]["all"].'px;">
+					<div class="bar" style="height:50%;border-left:'.$monthpixels[$key][$month]["anon"].'px solid #'.$pixelcolors["anon"].'"></div>
+					<div class="bar" style="height:50%;border-left:'.$monthpixels[$key][$month]["minor"].'px solid #'.$pixelcolors["minor"].'"></div>
+					</div>
+				  ';
 				}
+				$list .= '</td></tr>';
 			}
 		}
-		
-		return $pixels;
-	}
-
-
-//Generate the log actions infobox for the flash graph
-	function actionParse( $date, $logs ) {
-		global $content;
-		
-		if( strlen( $date ) == 5 ) {
-			$parseddate = '0' . substr( $date, 0, 1 ) . '/' . substr( $date, 1 );
-		}
-		else {
-			$parseddate = substr( $date, 0, 2 ) . '/' . substr( $date, 2 );
-		}
-		
-		$ret = $content->get_config_vars( 'duringdate', $parseddate );
-		
-		$ret .= "<ul>";
-		
-		foreach( $logs as $type => $count ) {
-			switch( $type ) {
-				case 'modify':
-					$ret .= "<li>" . $content->get_config_vars( 'linegraphmodify', $count ) . "</li>";
-					break;
-				case 'protect':
-					$ret .= "<li>" . $content->get_config_vars( 'linegraphprotect', $count ) . "</li>";
-					break;
-				case 'unprotect':
-					$ret .= "<li>" . $content->get_config_vars( 'linegraphunprotect', $count ) . "</li>";
-					break;
-				case 'move':
-					$ret .= "<li>" . $content->get_config_vars( 'linegraphmove' . $type, $count ) . "</li>";
-					break;
-				case 'move_redir':
-					$ret .= "<li>" . $content->get_config_vars( 'linegraphmoveredir' . $type, $count ) . "</li>";
-					break;
-				case 'move_prot':
-					$ret .= "<li>" . $content->get_config_vars( 'linegraphmoveprot' . $type, $count ) . "</li>";
-					break;
-				case 'delete':
-					$ret .= "<li>" . $content->get_config_vars( 'linegraphdelete' . $type, $count ) . "</li>";
-					break;
-				case 'restore':
-					$ret .= "<li>" . $content->get_config_vars( 'linegraphundelete' . $type, $count ) . "</li>";
-					break;
-				default:
-					break;
-			}
-		}
-		
-		$ret .= "</ul>";
-		
-		return htmlentities( $ret );
+		$wt->assign( "monthcountlist", $list);
+		unset($list);
 	
-	}
+// 	$content->assign( "sizegraph", true );
+// 		$sizegraph->assign( "data", $data['year_count'] );
+// 		$content->assign( "sizegraphdata", md5( $pageClass->get_title() . '-' . $pageClass->get_id() . '-line' ) );
+// 		file_put_contents( 'data/' . md5( $pageClass->get_title() . '-' . $pageClass->get_id()  . '-line' ) . '.xml', $sizegraph->fetch( 'sizegraph.tpl' ));
+// 		chmod( 'data/' . md5( $pageClass->get_title() . '-' . $pageClass->get_id()  . '-line' ) . '.xml', 0775);
 
-
-//Returns a list of even years, used to generate contrasting colors for the Edits/Month table
-	function getEvenYears( $years ) {
-		$years = array_flip( $years );
-		foreach( $years as $year => $id ) {
-			$years[$year] = "5";
-			if( $year % 2 == 0 ) unset( $years[$year] );
+	//usertable	
+	$list = '';
+	foreach( $data['editors'] as $user => $info ){
+		if ( $wt->iin_array( $user, $data['top_fifty'] ) ){
+			$list .= '
+			<tr>
+			<td class="date"><a href="//'.$url.'/wiki/User:'.$info["urlencoded"].'" >'.$user.'</a> (<a title="edit count" href="../pcount?user='.$info["urlencoded"].'&amp;lang='.$lang.'&amp;wiki='.$wiki.'" >ec</a>)</td>
+				<td>'.$info["all"].'</td>
+				<td>'.$info["minor"].' ('.$info["minorpct"].'%)</td>
+				<td>'.$info["first"].'</td>
+				<td>'.$info["last"].'</td>
+				<td>'.$info["atbe"].'</td>
+				<td>'.$info["size"].' KB</td>
+			</tr>
+			';
 		}
-		return $years;
+		
 	}
+	$wt->assign( "usertable", $list );
+	unset($list);
+
+	$wt->assign( "url", $url );
+	$wt->assign( "lang", $lang );
+	$wt->assign( "wiki", $wiki );
+
+unset( $base, $list );
+$wt->showPage($wt);
+
+
+
+
+
+
+
+
+
 

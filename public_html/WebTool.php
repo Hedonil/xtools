@@ -4,7 +4,16 @@ class perflog {
 	public $stack = array();
 	
 	function add( $modul, $time ){
-		array_push( $this->stack, array("modul" => $modul, "time" => $time));
+		array_push( $this->stack, array("modul" => $modul, "time" => number_format($time, 3) ));
+	}
+	function getOutput(){
+		if( count($this->stack) == 0){ return null;}
+		$out = "<div><table style='margin:50px;'><tr><td>modul</td><td>time(sec)</td></tr>";
+		foreach ($this->stack as $val){
+			$out .= "<tr><td>".$val["modul"]."</td><td>".$val["time"]."</td></tr>";
+		}
+		$out .= "</table>";
+		return $out;
 	}
 }
 $perflog = new perflog();
@@ -154,7 +163,7 @@ class WebTool {
          $config['httpecho'] = true;
       }*/
 			echo "<!--";
- #     $site = Peachy::newWiki( null, null, null, 'http://'.$url.'/w/api.php' );
+      $site = Peachy::newWiki( null, null, null, 'http://'.$url.'/w/api.php' );
 			echo "-->";
 	 }
    
@@ -321,13 +330,9 @@ class WebTool {
    }
    
    static function getTimeArray( $secs ) {
-      global $phptemp;
+      global $I18N;
       
-      if( is_null( $phptemp ) ) {
-         $phptemp = new FauxPHPTemp;
-      }
-      
-      if( !$secs ) return array( '0 ' .  $phptemp->get_config_vars( 's' ) );
+      if( !$secs ) return array( '0 ' .  $I18N->msg( 's' ) );
       
       $second = 1;
       $minute = $second * 60;
@@ -343,7 +348,7 @@ class WebTool {
             $count++;
          }
          
-         $r[] = $count . ' ' . $phptemp->get_config_vars( 'mo' );
+         $r[] = $count . ' ' . $I18N->msg( 'mo' );
          $secs -= $month * $count;
       }
       if ($secs > $week) {
@@ -352,7 +357,7 @@ class WebTool {
             $count++;
          }
          
-         $r[] = $count . ' ' . $phptemp->get_config_vars( 'w' );
+         $r[] = $count . ' ' . $I18N->msg( 'w' );
          $secs -= $week * $count;
       }
       if ($secs > $day) {
@@ -361,7 +366,7 @@ class WebTool {
             $count++;
          }
          
-         $r[] = $count . ' ' . $phptemp->get_config_vars( 'd' );
+         $r[] = $count . ' ' . $I18N->msg( 'd' );
          $secs -= $day * $count;
       }
       if ($secs > $hour) {
@@ -370,7 +375,7 @@ class WebTool {
             $count++;
          }
          
-         $r[] = $count . ' ' . $phptemp->get_config_vars( 'h' );
+         $r[] = $count . ' ' . $I18N->msg( 'h' );
          $secs -= $hour * $count;
       }
       if ($secs > $minute) {
@@ -379,11 +384,11 @@ class WebTool {
             $count++;
          }
          
-         $r[] = $count . ' ' . $phptemp->get_config_vars( 'm' );
+         $r[] = $count . ' ' . $I18N->msg( 'm' );
          $secs -= $minute * $count;
       }
       if ($secs) {
-         $r[] = $secs . ' ' . $phptemp->get_config_vars( 's' );
+         $r[] = $secs . ' ' . $I18N->msg( 's' );
       }
       
       return $r;
@@ -448,7 +453,7 @@ class WebTool {
       }
    }
    
-   static function iin_array( $needle, $haystack ) {
+   public function iin_array( $needle, $haystack ) {
    	return in_array( strtoupper( $needle ), array_map( 'strtoupper', $haystack ) );
    }
    
@@ -461,7 +466,8 @@ class WebTool {
 		$this->translate_i18n();
 		include '../templates/main.php';
 		unset($wt);
-		print_r( $perflog->stack );
+		
+		echo $perflog->getOutput();
 		die;
 	}
 	

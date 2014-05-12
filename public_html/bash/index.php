@@ -5,7 +5,7 @@
 	require_once( 'base.php' );
 
 //Load WebTool class
-	$wt = new WebTool( 'Bash', 'bash', array( 'getwikiinfo', 'database', 'smarty', 'sitenotice', 'replag') );
+	$wt = new WebTool( 'Bash', 'bash', array(  'database', 'smarty', 'sitenotice', 'replag') );
 	$base = new BashBase();
 	$wt->content = $base->getPageForm();
 

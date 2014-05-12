@@ -460,14 +460,6 @@ $this->tmplPageResult = '
 	}
 	</script>
 	
-	<span>{#added#}</span>
-	<ul>
-	{foreach from=$revs key=id item=i}
-	{$i}
-	{/foreach}	
-	</ul>
-
-	{if $info != ""}
 	<h3>{#generalstats#} &nbsp;&nbsp;<span style="font-size:75%;">[<a href="javascript:switchShow(\'generalstats\')">show/hide</a>]</span></h3>
 	<div id = "generalstats">
 	<table>

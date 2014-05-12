@@ -1,9 +1,4 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', '1');
-
-$version = '1.51';
-
 
 /*
 RfA Analysis
@@ -24,99 +19,73 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
+$version = '1.51';
 
-include( '/data/project/xtools/public_html/common/header.php' );
-//include( '/data/project/xtools/wikibot.classes.php' );
-echo "<!--";
-require_once('/data/project/xtools/Peachy/Init.php');
-echo"-->";
-include( '/data/project/xtools/rfalib4.php');
+//Requires
+	require_once( '../WebTool.php' );
+	include( '../../rfalib4.php');
 
-echo "<!--";
-$site = Peachy::newWiki( null, null, null, 'http://en.wikipedia.org/w/api.php' );
-echo "-->";
+	$wt = new WebTool( 'RfX Analysis', 'rfa', array("smarty", "sitenotice", "replag") );
+	$wt->setMemLimit();
 
-$wiki = new HTTP;
+	$wiki = new HTTP;
+	$wikipedia = "//en.wikipedia.org/wiki/";
 
-$wikipedia = "//en.wikipedia.org/wiki/";
+$pageForm = '
+	<h1>RfA Analysis</h1>
+		<p>This tool identifies duplicate voters in a <a href="//en.wikipedia.org/wiki/Wikipedia:Requests_for_adminship">Request for adminship</a> on the English Wikipedia. This tool can also analyze Requests for bureaucratship pages.</p>
+	<h2>Analyze</h2>
+	<form method="get" action="?" >
+		<strong>RfA page:</strong>&nbsp;
+		<input type="text" name="p" size="50" value="Wikipedia:Requests for adminship/Name of user" />
+		<input type="submit" value="Analyze" />
+	</form>
+';
 
-function print_h_l($var,$searchlist) {
-    if (empty($var)) {
-        echo "<ul><li>No items in list</li></ul>";
-    }
-    echo "<ol>";
-    foreach ($var as $vr) {
-        $iffy = False;
 
-        if (isset($vr['iffy'])) {
-            $iffy = $vr['iffy'];
-        }
-        if (isset($vr['error'])) {
-            $text = "<strong>Error parsing signature:</strong> <em>".htmlspecialchars($vr['context'])."</em>";
-        } else {
-            $text = $vr['name'];
-        }
+	if (isset($_GET['p'])) {
+		$targetpage = str_replace(' ','_',$_GET['p']);
+		$targetpage = explode('?',$_GET['p']);
+		$getpage = $targetpage[0];
+		
+		$wt->content = getRfaResults( $getpage );
+	}
+	else{
+		$wt->content = $pageForm;
+	}
+	$wt->content = "<div style='width:75%; margin-left:100px' >". $wt->content ."</div>";
+	$wt->showPage($wt);
 
-        if (isset($vr['name']) && in_array($vr['name'],$searchlist)) {
-            if ($iffy == 1)
-                echo "<li class=\"dup iffy1\">{$text}</li>\n";
-            else
-                echo "<li class=\"dup\">{$text}</li>\n";
-        } else {
-            if ($iffy == 1)
-                echo "<li class=\"iffy1\">{$text}</li>\n";
-            else
-                echo "<li>{$text}</li>\n";
-        }
-    }
-    echo "</ol>";
-}
 
-function bailout($message) {
-    echo "<h3>Fatal Error</h3>";
-    echo "<p>$message</p>";
-    include( '/data/project/xtools/public_html/common/footer.php' );
-    exit;
-}
 
-//BEGIN ==
-echo '<div id="content">
-   <table class="cont_table" style="width:100%;">
-   <tr>
-   <td class="cont_td" style="width:75%;">
-   <h2 class="table">RfA Analysis</h2>';
-?>
-<h1>RfA Analysis</h1>
-<p>This tool identifies duplicate voters in a <a href="//en.wikipedia.org/wiki/Wikipedia:Requests_for_adminship">Request for adminship</a> on the English Wikipedia. This tool can also analyze Requests for bureaucratship pages.</p>
-<?php
-if (isset($_GET['p'])) {
-    $targetpage = str_replace(' ','_',$_GET['p']);
-    $targetpage = explode('?',$_GET['p']);
-    $getpage = $targetpage[0];
-    echo "<h2>Voters for <a href=\"//en.wikipedia.org/wiki/{$getpage}\">{$getpage}</a></h2>";
+    
+function getRfaResults( $getpage ){
+print_r($getpage);
+	$result= "";
+	
+	$mypage = initPage( $getpage );
+	$buffer = $mypage->get_text();
 
-    //$buffer = file_get_contents('input.txt');
-    //$buffer = $wpq->getpage($getpage);
-    //$buffer = $wiki->get($wikipedia . $getpage);
-		echo "<!--";
-    $mypage = initPage($getpage);
-    $buffer = $mypage->get_text();
-		echo "-->";
+	$result = "<h2>Voters for <a href=\"//en.wikipedia.org/wiki/{$getpage}\">{$getpage}</a></h2>";
 
     if (($buffer === False) or (trim($buffer) == '')) {
-        bailout("Failed to load \"$getpage\" from server");
+		$result .= "<h3>Fatal Error</h3><p>Failed to load $getpage from server</p>";
+		return $result;
     }
 
     if (preg_match("/#redirect:?\s*?\[\[\s*?(.*?)\s*?\]\]/i",$buffer,$match)) {
-        bailout("Page redirects to {$match[1]}<br /><a href=\"{$_SERVER['PHP_SELF']}?p=".urlencode($match[1])."\">Click here to analyze it</a>");
+        $result .= "<h3>Fatal Error</h3><p>Page redirects to ". $match[1] ."<br />
+					<a href=\"".$_SERVER['PHP_SELF']."?p=".urlencode($match[1])." \" >Click here to analyze it</a>";
+        return $result;
     }
 
-    //Create an RFA object
+    //Create an RFA object & analyze
     $myRFA = new RFA();
+    $success = $myRFA->analyze( $buffer );
 
-
-    $result = $myRFA->analyze($buffer);
-    if ($result !== TRUE) {
+    if ( $success !== TRUE ) {
+		$result .= "<h3>Fatal Error</h3><p> $myRFA->lasterror </p>";
+		return $result;
         //bailout($myRFA->lasterror);
     }
 
@@ -129,27 +98,61 @@ if (isset($_GET['p'])) {
       $tally .= ", " . number_format( ( count($myRFA->support) / $totalVotes ) * 100, 2 ) . "%";
     }
 
-    echo '<a href="//en.wikipedia.org/wiki/User:'.$myRFA->username.'">'.$myRFA->username.'</a>\'s RfA ('.$tally.'); End date: '.$enddate.'<br />';
-
-    echo 'Found <strong>'.count($myRFA->duplicates).'</strong> duplicate votes (highlighted in <span class="dup">red</span>).'
+    $result .= '<a href="//en.wikipedia.org/wiki/User:'.$myRFA->username.'">'.$myRFA->username.'</a>\'s RfA ('.$tally.'); End date: '.$enddate.'<br /><br />';
+	$result .= 'Found <strong>'.count($myRFA->duplicates).'</strong> duplicate votes (highlighted in <span class="dup">red</span>).'
     .' Votes the tool is unsure about are <span class="iffy1">italicized</span>.';
 
-    echo "<h3>Support</h3>";
-    print_h_l($myRFA->support,$myRFA->duplicates);
-    echo "<h3>Oppose</h3>";
-    print_h_l($myRFA->oppose,$myRFA->duplicates);
-    echo "<h3>Neutral</h3>";
-    print_h_l($myRFA->neutral,$myRFA->duplicates);
+    $result .= "<h3>Support</h3>";
+    $result .= get_h_l($myRFA->support,$myRFA->duplicates);
+    $result .= "<h3>Oppose</h3>";
+    $result .= get_h_l($myRFA->oppose,$myRFA->duplicates);
+    $result .= "<h3>Neutral</h3>";
+    $result .= get_h_l($myRFA->neutral,$myRFA->duplicates);
+    
+    return $result;
 }
-?>
-<h2>Analyze</h2>
-<form method="get" action="<?php echo $_SERVER['PHP_SELF']; ?>">
-<strong>RfA page:</strong>&nbsp;
-<input type="text" name="p" size="50" value="<?php echo (isset($_GET['p'])) ? $_GET['p'] : "Wikipedia:Requests for adminship/Name of user" ?>" />
-<input type="submit" value="Analyze" />
-</form>
-<?php
 
-include( '/data/project/xtools/public_html/common/footer.php' );
+function get_h_l( $var, $searchlist ) {
+	$result = "";
+	
+	if (empty($var)) {
+		$result .= "<ul><li>No items in list</li></ul>";
+	}
+	
+	$result .= "<ol>";
+	foreach ($var as $vr) {
+		$iffy = False;
 
-?>
+		if (isset($vr['iffy'])) {
+			$iffy = $vr['iffy'];
+		}
+		
+		if (isset($vr['error'])) {
+			$text = "<strong>Error parsing signature:</strong> <em>".htmlspecialchars($vr['context'])."</em>";
+		} 
+		else {
+			$text = $vr['name'];
+		}
+
+		if (isset($vr['name']) && in_array($vr['name'],$searchlist)) {
+			if ($iffy == 1)
+				echo "<li class=\"dup iffy1\">{$text}</li>\n";
+				else
+				echo "<li class=\"dup\">{$text}</li>\n";
+		} 
+		else {
+			if ($iffy == 1){
+				$result .= "<li class=\"iffy1\">{$text}</li>\n";
+			}
+			else{
+				$result .= "<li>{$text}</li>\n";
+			}
+		}
+	}
+	$result .= "</ol>";
+	
+	return $result;
+}
+
+
+

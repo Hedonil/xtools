@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-	<title>{if $page != ""}{$page} -{/if} {#tool#} - {#title#}</title>
+	<title><?php echo $wt->toolname ?> - X's tools</title>
 	<link rel="stylesheet" type="text/css" href="//tools.wmflabs.org/newwebtest/style.css" />
 	<?php echo $wt->moreheader ?>
 	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
@@ -22,8 +22,10 @@
 			<a href="<?php echo $wt->basePath?>/blame">Article blamer</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/pages">Pages created</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/rangecontribs">CIDR</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/bash">Random quote</a> &middot;
 			<a href="<?php echo $wt->basePath?>/autoblock">Autoblock</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/rfa">RfX</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/rfap">RfX Vote</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/bash">Random quote</a> &middot;
 			<a href="<?php echo $wt->basePath?>/ipcalc">IP calculator</a> &middot; 
 		</div>
 

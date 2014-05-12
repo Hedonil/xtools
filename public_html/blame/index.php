@@ -5,7 +5,7 @@
 	require_once( 'base.php' );
 
 //Load WebTool class
-	$wt = new WebTool( 'Blame', 'blame', array( 'getwikiinfo', 'database', "smarty", "sitenotice", "replag" ) );
+	$wt = new WebTool( 'Blame', 'blame', array(  'database', "smarty", "sitenotice", "replag" ) );
 	WebTool::setMemLimit();
 	$base = new BlameBase();
 	$wt->content = $base->getPageForm();

@@ -11,7 +11,7 @@
 	
 	
 //Load WebTool class
-	$wt = new WebTool( 'Pages', 'pages', array("smarty", "sitenotice", "replag") );
+	$wt = new WebTool( 'Edit counter classic', 'pcount', array("smarty", "sitenotice", "replag") );
 	WebTool::setMemLimit();
 	$base = new PcountBase();
 	$wt->content = $base->tmplPageForm;

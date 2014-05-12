@@ -1,47 +1,21 @@
 <?php
 
-/*
-RfA Analysis
-Now supports RFALib 2.0 and higher
-Copyright (C) 2006 Tangotango (tangotango.wp _at_ gmail _dot_ com)
-
-This program is free software; you can redistribute it and/or
-modify it under the terms of the GNU General Public License
-as published by the Free Software Foundation; either version 2
-of the License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-*/
-$version = '1.51';
-
 //Requires
 	require_once( '../WebTool.php' );
-	include( '../../rfalib4.php');
 
 	$wt = new WebTool( 'RfX Analysis', 'rfa', array("smarty", "sitenotice", "replag") );
 	$wt->setMemLimit();
 
-	$wiki = new HTTP;
-	$wikipedia = "//en.wikipedia.org/wiki/";
-
-$pageForm = '
-	<h1>RfA Analysis</h1>
-		<p>This tool identifies duplicate voters in a <a href="//en.wikipedia.org/wiki/Wikipedia:Requests_for_adminship">Request for adminship</a> on the English Wikipedia. This tool can also analyze Requests for bureaucratship pages.</p>
-	<h2>Analyze</h2>
-	<form method="get" action="?" >
-		<strong>RfA page:</strong>&nbsp;
-		<input type="text" name="p" size="50" value="Wikipedia:Requests for adminship/Name of user" />
-		<input type="submit" value="Analyze" />
-	</form>
-';
-
+	$pageForm = '
+		<h1>RfA Analysis</h1>
+			<p>This tool identifies duplicate voters in a <a href="//en.wikipedia.org/wiki/Wikipedia:Requests_for_adminship">Request for adminship</a> on the English Wikipedia. This tool can also analyze Requests for bureaucratship pages.</p>
+		<h2>Analyze</h2>
+		<form method="get" action="?" >
+			<strong>RfA page:</strong>&nbsp;
+			<input type="text" name="p" size="50" value="Wikipedia:Requests for adminship/Name of user" />
+			<input type="submit" value="Analyze" />
+		</form>
+	  ';
 
 	if (isset($_GET['p'])) {
 		$targetpage = str_replace(' ','_',$_GET['p']);
@@ -60,18 +34,9 @@ $pageForm = '
 
     
 function getRfaResults( $getpage ){
-print_r($getpage);
-	$result= "";
+	global $site;
 	
-	$mypage = initPage( $getpage );
-	$buffer = $mypage->get_text();
-
 	$result = "<h2>Voters for <a href=\"//en.wikipedia.org/wiki/{$getpage}\">{$getpage}</a></h2>";
-
-    if (($buffer === False) or (trim($buffer) == '')) {
-		$result .= "<h3>Fatal Error</h3><p>Failed to load $getpage from server</p>";
-		return $result;
-    }
 
     if (preg_match("/#redirect:?\s*?\[\[\s*?(.*?)\s*?\]\]/i",$buffer,$match)) {
         $result .= "<h3>Fatal Error</h3><p>Page redirects to ". $match[1] ."<br />
@@ -80,34 +45,26 @@ print_r($getpage);
     }
 
     //Create an RFA object & analyze
-    $myRFA = new RFA();
-    $success = $myRFA->analyze( $buffer );
+    $myRFA = new RFA( $site, $getpage );
 
-    if ( $success !== TRUE ) {
-		$result .= "<h3>Fatal Error</h3><p> $myRFA->lasterror </p>";
-		return $result;
-        //bailout($myRFA->lasterror);
-    }
+    $enddate = $myRFA->get_enddate();
+    $tally = count( $myRFA->get_support() ).'/'.count( $myRFA->get_oppose() ).'/'.count( $myRFA->get_neutral() );
 
-    $enddate = $myRFA->enddate;
-
-    $tally = count($myRFA->support).'/'.count($myRFA->oppose).'/'.count($myRFA->neutral);
-
-    $totalVotes = count($myRFA->support) + count($myRFA->oppose);
+    $totalVotes = count( $myRFA->get_support() ) + count( $myRFA->get_oppose() );
     if( $totalVotes != 0 ) {
-      $tally .= ", " . number_format( ( count($myRFA->support) / $totalVotes ) * 100, 2 ) . "%";
+      $tally .= ", " . number_format( ( count($myRFA->get_support()) / $totalVotes ) * 100, 2 ) . "%";
     }
 
-    $result .= '<a href="//en.wikipedia.org/wiki/User:'.$myRFA->username.'">'.$myRFA->username.'</a>\'s RfA ('.$tally.'); End date: '.$enddate.'<br /><br />';
-	$result .= 'Found <strong>'.count($myRFA->duplicates).'</strong> duplicate votes (highlighted in <span class="dup">red</span>).'
+    $result .= '<a href="//en.wikipedia.org/wiki/User:'.$myRFA->get_username().'">'.$myRFA->get_username().'</a>\'s RfA ('.$tally.'); End date: '.$enddate.'<br /><br />';
+	$result .= 'Found <strong>'.count($myRFA->get_duplicates()).'</strong> duplicate votes (highlighted in <span class="dup">red</span>).'
     .' Votes the tool is unsure about are <span class="iffy1">italicized</span>.';
 
     $result .= "<h3>Support</h3>";
-    $result .= get_h_l($myRFA->support,$myRFA->duplicates);
+    $result .= get_h_l($myRFA->get_support(),$myRFA->get_duplicates());
     $result .= "<h3>Oppose</h3>";
-    $result .= get_h_l($myRFA->oppose,$myRFA->duplicates);
+    $result .= get_h_l($myRFA->get_oppose(),$myRFA->get_duplicates());
     $result .= "<h3>Neutral</h3>";
-    $result .= get_h_l($myRFA->neutral,$myRFA->duplicates);
+    $result .= get_h_l($myRFA->get_neutral(),$myRFA->get_duplicates());
     
     return $result;
 }

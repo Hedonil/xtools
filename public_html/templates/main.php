@@ -16,12 +16,12 @@
 	
 	<div id="content">
 		<div id="navigation" class="center container">
-			<a href="<?php echo $wt->basePath?>/">Home</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/ec">Home</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/ec">Edit counter<sup style="color:green; font-size:70%; position:relative;left:-27px; top:-5px; margin-right:-30px"> classic</sup></sup></a> &middot; 
-			<a href="<?php echo $wt->basePath?>/articleinfo/">Page History Statistics</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/blame">Article blamer</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/pages">Pages created</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/autoedits">Autmated edits</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/articleinfo/">Page history</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/blame">Article blamer</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/rangecontribs">CIDR</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/autoblock">Autoblock</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/rfa">RfX</a> &middot; 

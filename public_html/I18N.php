@@ -26,7 +26,7 @@ $I18N = i18n_init();
 function i18n_init(){
 	global $i18nPath;
 	
-	$I18N = new TsIntuition();
+	$I18N = new Intuition();
 	$I18N->loadTextdomainFromFile( $i18nPath.'/i18n/Supercount.i18n.php', 'supercount');
 	$I18N->setDomain('supercount');
 

@@ -19,11 +19,12 @@ class Perflog {
 $perflog = new Perflog();
 $starttime = microtime(True);
 
-echo "<!--";
-require_once( '/data/project/newwebtest/Peachy/Init.php' );
-echo "-->";
-require_once( 'I18N.php' );
-include( 'sitenotice.php' );
+// Incudes
+	echo "<!--";
+	require_once( '/data/project/newwebtest/Peachy/Init.php' );
+	echo "-->";
+	require_once( 'I18N.php' );
+	include( 'sitenotice.php' );
 
 /**
  * Main class for all xtools subtools
@@ -120,10 +121,10 @@ class WebTool {
 			}
 		}
 		
-		if( !in_array( 'addstat', $dont ) ) {
-			require_once( '/data/project/xtools/stats.php' );
-			addStatV3( $toolname );
-		}
+// 		if( !in_array( 'addstat', $dont ) ) {
+// 			require_once( '/data/project/xtools/stats.php' );
+// 			addStatV3( $toolname );
+// 		}
 	
 	}
    

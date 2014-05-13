@@ -21,6 +21,7 @@
 			<a href="<?php echo $wt->basePath?>/articleinfo/">Page History Statistics</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/blame">Article blamer</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/pages">Pages created</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/autoedits">Autmated edits</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/rangecontribs">CIDR</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/autoblock">Autoblock</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/rfa">RfX</a> &middot; 
@@ -40,7 +41,7 @@
 		</div>
 		
 		<br />
-		<span style="font-size:100%;"> <?php echo $wt->executedtime ?></span>
+		<span><small><?php echo $wt->executed ?></small></span>
 	</div>
 
 	<div id="footer">

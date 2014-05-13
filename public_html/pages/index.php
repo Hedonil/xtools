@@ -13,13 +13,16 @@
 	$wt->assign("lang", "en");
 	$wt->assign("wiki", "wikipedia");
 	
+	$user = $wgRequest->getSafeVal('user');
+	$user = ( isset($_GET["name"]) ) ? urldecode($_GET["name"]) : urldecode($user);
+
 //Show form if &article parameter is not set (or empty)
-	if( !$wt->webRequest->getSafeVal( 'getBool', 'user' ) ) {
+	if( $user == "" ) {
 		$wt->showPage($wt);
 	}
-	
+
 //Get username & userid, quit if not exist
-	$userData = $base->getUserData( $dbr, $wt->webRequest->getSafeVal('user') );
+	$userData = $base->getUserData( $dbr, $user );
 	if( !$userData ) { 
 		$wt->error = $I18N->msg("No such user");
 		$wt->showPage($wt);

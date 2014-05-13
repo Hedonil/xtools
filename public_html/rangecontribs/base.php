@@ -2,13 +2,7 @@
 
 class RangecontribsBase{
 	
-	public $tmplPageForm;
-	public $tmplPageResult;
-	
-	function __construct(){
-		$this->loadPageTemplates();
-	}
-	
+		
 	public function getMatchingIPs( $dbr, $ip_prefix ){
 		$query = "
 			SELECT rev_user_text, count(rev_user_text) as sum
@@ -195,8 +189,10 @@ class RangecontribsBase{
 		$cidr_range = $cidr[1];
 	
 		$cidr_base_bin = self::addZero( decbin( ip2long( $cidr_base ) ) );
+#		$cidr_base_bin = self::ip2bin( $cidr_base );
 	
 		$cidr_shortened = substr( $cidr_base_bin, 0, $cidr_range );
+#		$cidr_shortened = substr( implode( '', $cidr_base_bin ), 0, $cidr_range );
 		$cidr_difference = 32 - $cidr_range;
 	
 		$cidr_begin = $cidr_shortened . str_repeat( '0', $cidr_difference );
@@ -246,9 +242,68 @@ class RangecontribsBase{
 			);
 	}
 	
+	// from ipcalc, maybe outdated
+	function calcRange2( $iparray ) {
+		print_r($iparray);
+		$iparray = array_unique($iparray);
+		$iparray = array_map("ip2long",$iparray[0]);
+		sort($iparray);
+		$iparray = array_map("long2ip",$iparray);
+	
+		$ip_begin = $iparray[0];
+		$ip_end = $iparray[ count($iparray) - 1 ];
+	
+		$ip_begin_bin = self::ip2bin( $ip_begin );
+		$ip_end_bin = self::ip2bin( $ip_end );
+	
+		$ip_shortened = self::findMatch( implode( '', $ip_begin_bin ), implode( '', $ip_end_bin ) );
+		$cidr_range = strlen( $ip_shortened );
+		$cidr_difference = 32 - $cidr_range;
+	
+		$cidr_begin = $ip_shortened . str_repeat( '0', $cidr_difference );
+		$cidr_end = $ip_shortened . str_repeat( '1', $cidr_difference );
+	
+		$ip_count = bindec( $cidr_end ) - bindec( $cidr_begin ) + 1;
+	
+		$ips = array();
+		foreach( $iparray as $ip ) {
+			$ips[] = array(
+					'ip' => $ip,
+					'bin' => implode( '.', self::ip2bin( $ip ) ),
+					'rdns' => gethostbyaddr( $ip ),
+					'long' => ip2long( $ip ),
+					'hex' => implode( '.', self::ip2hex( $ip ) ),
+					'octal' => implode( '.', self::ip2oct( $ip ) ),
+					'radians' => implode( '/', self::ip2rad( $ip ) ),
+					'base64' => implode( '.', self::ip264( $ip ) ),
+					'alpha' => implode( '.', self::ip2alpha( $ip ) ),
+			);
+		}
+	
+		usort( $ips, array( 'IPCalc', 'ipsort' ) );
+	
+		$tmp = self::calcCIDR( $ip_begin . '/' . $cidr_range );
+	
+		return array(
+				'begin' => $tmp['begin'],
+				'end' => $tmp['end'],
+				'count' => $tmp['count'],
+				'suffix' => $cidr_range,
+				'ips' => $ips
+		);
+	}
+	
 	public function addZero ( $string ) {
 		$count = 32 - strlen( $string );
 		for( $i = $count; $i>0; $i-- ) {
+			$string = "0" . $string;
+		}
+		return $string;
+	}
+	
+	function addZero2( $string, $len = 32 ) {
+		$count = $len - strlen( $string );
+		for( $i = $count; $i > 0; $i-- ) {
 			$string = "0" . $string;
 		}
 		return $string;
@@ -280,62 +335,70 @@ class RangecontribsBase{
 		return $match;
 	}
 
-private function loadPageTemplates(){
-		
-$this->tmplPageForm = '
-	<span>{#rc_usage_0#}</span>
-	<ol>
-	<li>{#ip_range#}: &nbsp;{#rc_usage_1#} 0.0.0.0/0</li>
-	<li>{#ip_list#}: &nbsp;{#rc_usage_2#}</li>
-	</ol><br />
-	<form action="?" method="get">
-	<table>
-	<tr>
-		<td style="padding-left:5px" >Wiki: <input type="text" value="{$lang}" name="lang" size="9" />.<input type="text" value="{$wiki}" size="10" name="wiki" />.org</td>
-	</tr>
-	<tr>
-		<td style="padding-left:5px" >Limit:
-		<select name="limit">
-		<option value="50">50</option>
-		<option selected value="500" >500</option>
-		<option value="5000">5000</option>
-		</select>
-		</td>
-	</tr>
-	<tr></tr>
-	<tr>
-		<td style="padding-left:5px; display:inline" >
-		<span style="padding-right:20px">{#ip_range#}<input type="radio" name="type" value="range" /></span>
-		<span>{#ip_list#}<input type="radio" name="type" value="list" /></span>
-		</td>
-	</tr>
-	<tr>
-		<td><textarea name="ips" rows="10" cols="40"></textarea></td>
-	</tr>
-	<tr>
-		<td><input type="submit" value="{#submit#}"/></td>
-	</tr>
-	</table>
-	</form>
-	<br />
-	<hr />
-';
-
-$this->tmplPageResult = '
-	<table>
-		<tr><td><b>{#cidr#}: 	 </b></td><td>{$cidr}</td></tr>
-		<tr><td><b>{#ip_start#}: </b></td><td>{$ip_start}</td></tr>
-		<tr><td><b>{#ip_end#}:   </b></td><td>{$ip_end}</td></tr>
-		<tr><td><b>{#ip_number#}:</b></td><td>{$ip_number}</td></tr>
-		<tr><td><b>{#ip_found#}: </b></td><td>{$ip_found}</td></tr>
-	</table>
-		{$ipList}
-	<table>
-		{$list}
-	</table>
-	<br />
-';
-
-}
+	
+	
+	function ipsort( $ip1, $ip2 ) {
+		return strnatcmp( sprintf('%u', $ip1['long'] ), sprintf('%u', $ip2['long'] ) );
+	}
+	
+	function ip2bin( $ip ) {
+		$tmp = explode( '.', $ip );
+	
+		foreach( $tmp as $key => $val ) {
+			$tmp[$key] = self::addZero( decbin( $val ), 8 ) ;
+		}
+	
+		return $tmp;
+	}
+	
+	function ip2hex( $ip ) {
+		$tmp = explode( '.', $ip );
+	
+		foreach( $tmp as $key => $val ) {
+			$tmp[$key] = self::addZero( dechex( $val ), 2 );
+		}
+	
+		return $tmp;
+	}
+	
+	function ip2oct( $ip ) {
+		$tmp = explode( '.', $ip );
+	
+		foreach( $tmp as $key => $val ) {
+			$tmp[$key] = self::addZero( decoct( $val ), 3 );
+		}
+	
+		return $tmp;
+	}
+	
+	function ip2rad( $ip ) {
+		$tmp = explode( '.', $ip );
+	
+		foreach( $tmp as $key => $val ) {
+			$tmp[$key] = deg2rad( $val );
+		}
+	
+		return $tmp;
+	}
+	
+	function ip264( $ip ) {
+		$tmp = explode( '.', $ip );
+	
+		foreach( $tmp as $key => $val ) {
+			$tmp[$key] = base64_encode( $val );
+		}
+	
+		return $tmp;
+	}
+	
+	function ip2alpha( $ip ) {
+		$tmp = explode( '.', $ip );
+	
+		foreach( $tmp as $key => $val ) {
+			$tmp[$key] = str_replace( array( 1, 2, 3, 4, 5, 6, 7, 8, 9, 0 ), array( 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J' ), $val );
+		}
+	
+		return $tmp;
+	}
 
 }

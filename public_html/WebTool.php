@@ -1,6 +1,6 @@
 <?php
 
-class perflog {
+class Perflog {
 	public $stack = array();
 	
 	function add( $modul, $time ){
@@ -16,13 +16,14 @@ class perflog {
 		return $out;
 	}
 }
-$perflog = new perflog();
+$perflog = new Perflog();
+$starttime = microtime(True);
 
 echo "<!--";
- 	require_once( '/data/project/newwebtest/Peachy/Init.php' );
+require_once( '/data/project/newwebtest/Peachy/Init.php' );
 echo "-->";
-	require_once( 'I18N.php' );
-
+require_once( 'I18N.php' );
+include( 'sitenotice.php' );
 
 /**
  * Main class for all xtools subtools
@@ -31,9 +32,12 @@ echo "-->";
  */
 class WebTool {
 	public $basePath = "//tools.wmflabs.org/newwebtest";
+	private $starttime;
 	
 	public $toolname;
 	public $moreheader;
+	
+	public $sitenotice;
 	public $alert;
 	public $error;
 	
@@ -42,6 +46,7 @@ class WebTool {
 	
 	public $sourcecode;
 	public $bugreport;
+	public $executed;
 	
 	public $uselang;
 	public $translate;
@@ -49,12 +54,14 @@ class WebTool {
 	
 	public $webRequest;
 	
+	private $numberFormater;
+	private $dateFormater;
 	private $mOutput;
 
 	function __construct( $toolname = null, $smarty_name = null, $dont = array() ) {
-		global $wgRequest, $wtConfigTitle, $phptemp, $content, $time, $I18N;
+		global $wgRequest, $wtConfigTitle, $starttime, $I18N;
 		
-		$time = microtime( 1 );
+		$this->starttime = $starttime;
 		
 		//Get new WebReuest object (Peachy)
 		if( is_null( $wgRequest ) ) {
@@ -66,7 +73,7 @@ class WebTool {
 			$this->webRequest = &$wgRequest;
 		}
 		
-		$this->uselang = $wgRequest->getSafeVal('uselang');
+		$this->uselang = ( $wgRequest->getSafeVal('bool', 'uselang')) ? $wgRequest->getSafeVal('uselang') : "en";
 		$I18N->setLang( $this->uselang );
 		
 		$this->toolname = $toolname;
@@ -75,7 +82,13 @@ class WebTool {
 		$this->translate = $I18N->msg('translatelink');
 		$this->langLinks = $I18N->langLinks;
 		
+		$this->numberFormater = new NumberFormatter( $I18N->getLang(), NumberFormatter::DECIMAL);
+		$this->dateFormater   = new IntlDateFormatter( $I18N->getLang(), IntlDateFormatter::MEDIUM, IntlDateFormatter::MEDIUM, "UTC", IntlDateFormatter::GREGORIAN);
+		
+		$this->sitenotice = ( $sitenotice ) ? $sitenotice : null;
+		
 		$wtConfigTitle = $smarty_name;
+		
 		
 		mb_internal_encoding("utf-8"); 
 		header('content-type: text/html; charset: utf-8'); 
@@ -87,16 +100,6 @@ class WebTool {
 			error_reporting(E_ERROR);
 		}
 		
-		if( !in_array( 'smarty', $dont ) ) {
-			require_once( "/data/project/xtools/public_html/Smarty/languages.class.php" );
-			require_once( "/data/project/xtools/public_html/Smarty/Smarty.class.php" );
-			self::initSmarty( $smarty_name );
-		}
-		
-		if( !in_array( 'sitenotice', $dont ) ) {
-			require_once( '/data/project/xtools/public_html/sitenotice.php' );
-			self::checkSitenotice();
-		}
 		
 		if( !in_array( 'getwikiinfo', $dont ) ) self::getWikiInfo();
 		
@@ -159,22 +162,10 @@ class WebTool {
 		global $url, $pgVerbose, $site;
 		
 		$pgVerbose = array();
-#		echo "<!--";
 		$site = Peachy::newWiki( null, null, null, 'http://'.$url.'/w/api.php' );
-#		echo "-->";
+
 	}
 	
-	static function checkSitenotice() {
-		global $content;
-		
-		$siteNoticeClass = new siteNotice;
-		$sitenotice = $siteNoticeClass->checkSiteNoticeRaw();
-		
-		if( $sitenotice ) {
-			$content->assign( "alert", $sitenotice );
-		}
-	}
-   
    static function setDBVars() {
       global $toolserver_username, $toolserver_password;
 
@@ -222,19 +213,13 @@ class WebTool {
 		$url = $lang.'.'.$wiki.'.org';
 	}
 	
-	static function toDie( $msg ) {
+	public function toDie( $msg ) {
 		global $content;
 		
 		$content->assign( "error", $msg );
 		self::assignContent();
 	}
 	
-	static function toDieMsg( $msg ) {
-		global $phptemp;
-		
-		$text = call_user_func_array( array( $phptemp, 'get_config_vars' ), func_get_args() );
-		self::toDie( $text );
-	}
 	
 	static function pre( $array ) {
 		echo "<pre>";
@@ -339,7 +324,7 @@ class WebTool {
 		self::assignContent();
 	}
    
-	static function prettyTitle( $s, $capital = false ) {
+	public function prettyTitle( $s, $capital = false ) {
 		$name = trim( str_replace( array('&#39;','%20'), array('\'',' '), $s ) );
 		$name = urldecode($name);
 		$name = str_replace('_', ' ', $name);
@@ -349,21 +334,18 @@ class WebTool {
 		
 		return $name;
 	}
-   
-   static function isIP( $name ) {
-      return (bool) ( long2ip(ip2long($name)) == $name );
-   }
-   
-   static function number_format( $number, $decimal = 2 ) {
-      global $phptemp;
-      
-      if( method_exists( $phptemp, 'get_config_vars' ) ) {
-         return number_format( $number, $decimal, $phptemp->get_config_vars( 'decimal_separator' ), $phptemp->get_config_vars( 'thousands_separator' ) );
-      }
-      else {
-         return number_format( $number, $decimal );
-      }
-   }
+	
+	public function isIP( $name ) {
+		return (bool) ( long2ip(ip2long($name)) == $name );
+	}
+	
+	public function numFmt( $number, $decimal = 2, $noZero = false ) {
+		if ( intval($number) == 0 && $noZero ){
+			return null;
+		}
+		
+		return $this->numberFormater->format($number);
+	}
 	
 	public function iin_array( $needle, $haystack ) {
 		return in_array( strtoupper( $needle ), array_map( 'strtoupper', $haystack ) );
@@ -373,16 +355,7 @@ class WebTool {
 		return strpos( $haystack, $needle ) !== false;
 	}
 	
-	public function showPage( &$wt ){
-		global $perflog;
-		$this->translate_i18n();
-		include '../templates/main.php';
-		unset($wt);
 		
-		echo $perflog->getOutput();
-		exit(0);
-	}
-	
 	/**
 	 * Loads Intuition I18N object. Replaces {#these#} with the messages.
 	 * @param object $I18N - defined in class I18N
@@ -421,6 +394,24 @@ class WebTool {
 	
 		$this->content = str_ireplace( '{&isset: '.$name.' &}', '', $this->content );
 	}
+	
+	/**
+	 * Finishes script, outputs the things, unsets the objects & vars
+	 * @param unknown $wt
+	 */
+	public function showPage( &$wt ){
+		global $I18N, $perflog;
+		
+		$this->translate_i18n();
+		$exectime = $this->numFmt( (microtime(true) - $this->starttime) );
+		$this->executed = $I18N->msg( 'executed', array( "variables" => array($exectime) ) );
+		include '../templates/main.php';
+		unset($wt);
+	
+		echo $perflog->getOutput();
+		exit(0);
+	}
+
 }
 
 

@@ -3,63 +3,57 @@
 class AutoEditsBase {
 
 
-   public static $AEBTypes = array(
-      'Twinkle' => array( 'type' => 'LIKE', 'query' => '%WP:TW%', 'shortcut' => 'WP:TW' ),
-      'AutoWikiBrowser' => array( 'type' => 'RLIKE', 'query' => '.*(AutoWikiBrowser|AWB).*', 'shortcut' => 'WP:AWB' ),
-      'Friendly' => array( 'type' => 'LIKE', 'query' => '%WP:FRIENDLY%', 'shortcut' => 'WP:FRIENDLY' ),
-      'FurMe' => array( 'type' => 'RLIKE', 'query' => '.*(User:AWeenieMan/furme|FurMe).*', 'shortcut' => 'WP:FURME' ),
-      'Popups' => array( 'type' => 'LIKE', 'query' => '%Wikipedia:Tools/Navigation_popups%', 'shortcut' => 'Wikipedia:Tools/Navigation_popups' ),
-      'MWT' => array( 'type' => 'LIKE', 'query' => '%User:MichaelBillington/MWT%', 'shortcut' => 'User:MichaelBillington/MWT' ),
-      'Huggle' => array( 'type' => 'LIKE', 'query' => '%[[WP:HG|HG]]%', 'shortcut' => 'WP:HG' ),
-      'NPWatcher' => array( 'type' => 'LIKE', 'query' => '%WP:NPW%', 'shortcut' => 'WP:NPW' ),
-      'Amelvand' => array( 'type' => 'LIKE', 'query' => 'Reverted % edit% by % (%) to last revision by %', 'shortcut' => 'User:Gracenotes/amelvand.js' ),
-      'Igloo' => array( 'type' => 'RLIKE', 'query' => '.*(User:Ale_jrb/Scripts/igloo|GLOO).*', 'shortcut' => 'WP:IGL' ),
-      'HotCat' => array( 'type' => 'LIKE', 'query' => '%(using [[WP:HOTCAT|HotCat]])%', 'shortcut' => 'WP:HOTCAT' ),
-      'STiki' => array( 'type' => 'LIKE', 'query' => '%STiki%', 'shortcut' => 'WP:STiki' ),
-      'Dazzle!' => array( 'type' => 'LIKE', 'query' => '%Dazzle!%', 'shortcut' => 'WP:Dazzle!' ),
-      'Articles For Creation tool' => array( 'type' => 'LIKE', 'query' => '%([[WP:AFCH|AFCH]])%', 'shortcut' => 'WP:AFCH' ),
-   );
+	public function getMatchingEdits( &$dbr, $username, $begin, $end, $count, $api = false ) {
+		
+		$AEBTypes = array(
+				'Twinkle' => array( 'type' => 'LIKE', 'query' => '%WP:TW%', 'shortcut' => 'WP:TW' ),
+				'AutoWikiBrowser' => array( 'type' => 'RLIKE', 'query' => '.*(AutoWikiBrowser|AWB).*', 'shortcut' => 'WP:AWB' ),
+				'Friendly' => array( 'type' => 'LIKE', 'query' => '%WP:FRIENDLY%', 'shortcut' => 'WP:FRIENDLY' ),
+				'FurMe' => array( 'type' => 'RLIKE', 'query' => '.*(User:AWeenieMan/furme|FurMe).*', 'shortcut' => 'WP:FURME' ),
+				'Popups' => array( 'type' => 'LIKE', 'query' => '%Wikipedia:Tools/Navigation_popups%', 'shortcut' => 'Wikipedia:Tools/Navigation_popups' ),
+				'MWT' => array( 'type' => 'LIKE', 'query' => '%User:MichaelBillington/MWT%', 'shortcut' => 'User:MichaelBillington/MWT' ),
+				'Huggle' => array( 'type' => 'RLIKE', 'query' => '.*(\[\[WP:HG\|HG\]\]|WP:Huggle).*', 'shortcut' => 'WP:HG' ),
+				'NPWatcher' => array( 'type' => 'LIKE', 'query' => '%WP:NPW%', 'shortcut' => 'WP:NPW' ),
+				'Amelvand' => array( 'type' => 'LIKE', 'query' => 'Reverted % edit% by % (%) to last revision by %', 'shortcut' => 'User:Gracenotes/amelvand.js' ),
+				'Igloo' => array( 'type' => 'RLIKE', 'query' => '.*(User:Ale_jrb/Scripts/igloo|GLOO).*', 'shortcut' => 'WP:IGL' ),
+				'HotCat' => array( 'type' => 'LIKE', 'query' => '%(using [[WP:HOTCAT|HotCat]])%', 'shortcut' => 'WP:HOTCAT' ),
+				'STiki' => array( 'type' => 'LIKE', 'query' => '%STiki%', 'shortcut' => 'WP:STiki' ),
+				'Dazzle!' => array( 'type' => 'LIKE', 'query' => '%Dazzle!%', 'shortcut' => 'WP:Dazzle!' ),
+				'Articles For Creation tool' => array( 'type' => 'LIKE', 'query' => '%([[WP:AFCH|AFCH]])%', 'shortcut' => 'WP:AFCH' ),
+		);
+		
+		$cond_begin = ( $begin ) ? 'AND UNIX_TIMESTAMP(rev_timestamp) > ' . $dbr->strencode( strtotime( $begin )) : null;
+		$cond_end 	= ( $end ) ? 'AND UNIX_TIMESTAMP(rev_timestamp) < ' . $dbr->strencode( strtotime( $end )) : null;
+		
+		$contribs = array();
+		$error = false;
+		$query = "";
+		foreach( $AEBTypes as $name => $check ) {
+			
+			$cond_tool = 'AND rev_comment ' . $check['type'] . ' \'' . $check['query'] . '\'';
+			
+			$query .= "UNION
+					SELECT '$name' as toolname, count(*) as count 
+					FROM revision_userindex 
+					WHERE rev_user_text = '$username' $cond_begin $cond_end $cond_tool
+				";
+		}
+		$query = substr( $query, 6 );
+		$res = $dbr->query( $query );
 
-   public static function getMatchingEdits( $username, $begin, $end, $count, $api = false ) {
-      global $dbr, $phptemp;
-
-      $timeconds = array( 'rev_user_text' => $username );
-
-      if( $begin ) {
-         $timeconds[] = 'UNIX_TIMESTAMP(rev_timestamp) > ' . $dbr->strencode( strtotime( $begin ) );
-      }
-      if( $end ) {
-         $timeconds[] = 'UNIX_TIMESTAMP(rev_timestamp) < ' . $dbr->strencode( strtotime( $end ) );
-      }
-
-      $contribs = $urls = array();
-
-      foreach( AutoEditsBase::$AEBTypes as $name => $check ) {
-         $conds = $timeconds; $conds[] = 'rev_comment ' . $check['type'] . ' \'' . $check['query'] . '\'';
-
-         try {
-            $res = $dbr->select(
-               array( 'revision_userindex' ),
-               array( 'COUNT(*) AS count' ),
-               $conds
-            );
-
-            $contribs[$name] = $res[0]['count'];
-         } catch( Exception $e ) {
-            if( $api ) return array( 'error' => 'dberror', 'info' => $e->getMessage() );
-            WebTool::toDieMsg( 'mysqlerror', $e->getMessage() );
-         }
-         $urls[$name] = $check['shortcut'];
-      }
-
-      $formattedpct = WebTool::number_format( ( ( $count ? array_sum( $contribs ) / $count : 0 ) *100 ), 2);
-      if( $api ) {
-         return array( 'counts' => $contribs, 'total' => array_sum( $contribs ), 'editcount' => $count, 'pct' => $formattedpct );
-      }
-      else {
-         return array( 'counts' => $contribs, 'total' => WebTool::number_format( array_sum( $contribs ), 0 ), 'editcount' => WebTool::number_format( $count, 0 ), 'pct' => $formattedpct, 'urls' => $urls );
-      }
-
+		$sum = 0;
+		foreach ( $res->endArray as $i => $item ){
+			$contribs["tools"][$i]["toolname"] = $item['toolname'];
+			$contribs["tools"][$i]["count"] = $item['count'];
+			$contribs["tools"][$i]["shortcut"] = $AEBTypes[ $item["toolname"] ]["shortcut"];
+			$sum += $item["count"];
+		}
+		
+		$contribs["total"] = $sum;
+		$contribs["pct"] = number_format( ( ( $count ? $sum / $count : 0 ) *100 ), 2);
+		$contribs["editcount"] = $count;
+		
+		return $contribs;
    }
 
 }  

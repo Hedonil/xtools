@@ -16,14 +16,26 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Completely rewritten and adjusted
+(C) 2014 Hedonil
+ 
 */
 
 class Counter {
+	
+	public $baseurl;
+	public $apibase;
+	public $http;
+	public $iName;  //input username
 	
 	private $mName;
 	private $mIP;
 	private $mExists;
 	private $mUID;
+	private $mRegistration;
+	
+	private $mReverted;
 	private $mDeleted;
 	private $mLive;
 	private $mTotal;
@@ -34,18 +46,27 @@ class Counter {
 	private $mFirstEdit;
 	private $mAveragePageEdits;
 	
-	function __construct( $user ) {
-		$this->mName = $user;
+	private $chMonthly;
+	
+	function __construct( $user, $wikibase ) {
+		
+		$this->http = new HTTP();
+		$this->baseurl = 'http://'.$wikibase;
+		$this->apibase = $this->baseurl.'/w/api.php?';
+		
+		$this->iName = $user;
 		
 		$this->checkIP();
 		
-		$this->checkExists();
+#		$this->checkExists();
+		$this->getUserInfo();
 		
 		$this->getCounts();
-		
-		$this->getGroups();
+		$this->getRevertedEdits();
 	
 		$this->getStats();
+		
+		$this->fillMonthList();
 
 	}
 
@@ -53,8 +74,36 @@ class Counter {
 	function checkIP() {
 		$this->mIP = ( long2ip( ip2long( $this->mName ) ) == $this->mName ) ? true : false;
 	}
-
 	
+	function getGlobalUserInfo(){
+		$query = "/w/api.php?action=query&meta=globaluserinfo&format=json&guiuser=Hedonil&guiprop=groups%7Crights%7Cmerged%7Cunattached%7Ceditcount";
+	}
+	
+	function getUserInfo(){
+
+		$data = array(
+			'action' => 'query',
+			'list' 	 => 'users',
+			'format' => 'json',
+			'usprop' => 'blockinfo|groups|implicitgroups|editcount|registration',
+			'ususers'=> $this->iName
+		);
+
+		$res = json_decode( $this->http->get( $this->apibase.http_build_query($data)) );
+		
+		if ( isset( $res->query->users[0]->userid) ){
+			$this->mUID = $res->query->users[0]->userid;
+			$this->mName = urldecode($res->query->users[0]->name);
+			$this->mGroups = $res->query->users[0]->groups;
+			$this->mRegistration = $res->query->users[0]->registration;
+			$this->mExists = true;
+		}
+		else {
+			$this->mExists = false;
+		}
+
+	}
+		
 	function checkExists() {
 		global $perflog; $start = microtime(true);
 		global $dbr;
@@ -87,15 +136,24 @@ class Counter {
 		global $perflog; $start = microtime(true);
 		global $dbr;
 		
-		$res = $dbr->query("SELECT COUNT(*) AS count FROM archive_userindex WHERE ar_user_text = '$this->mName' "); 
+		if ( intval($this->mUID) != 0 && $this->mUID == intval($this->mUID ) ){
+			$res = $dbr->query("
+					SELECT 'arc' AS text, COUNT(*) AS count FROM archive_userindex WHERE ar_user = '$this->mUID' AND ar_timestamp > 1 
+					UNION
+					SELECT 'rev' AS text, COUNT(*) AS count FROM revision_userindex WHERE rev_user = '$this->mUID' AND rev_timestamp > 1 
+				");
+		}
+		elseif ($this->mIP ){
+			$res = $dbr->query("
+					SELECT 'arc' AS text, COUNT(*) AS count FROM archive_userindex WHERE ar_user_text = '$this->mName' 
+					UNION
+					SELECT 'rev' AS text, COUNT(*) AS count FROM revision_userindex WHERE rev_user_text = '$this->mName'
+				");
+		}
 		$res = $res->endArray;
-				
+		
 		$this->mDeleted = $res[0]['count'];
-		
-		$res = $dbr->query("SELECT COUNT(*) AS count FROM revision_userindex WHERE rev_user = '$this->mUID' AND rev_timestamp > 1 ");
-		$res = $res->endArray;
-		
-		$this->mLive = $res[0]['count'];
+		$this->mLive = $res[1]['count'];
 		
 		$this->mTotal = $this->mLive + $this->mDeleted;
 		
@@ -103,30 +161,18 @@ class Counter {
 		$perflog->add(__FUNCTION__, microtime(true)-$start );
 	}
 	
-	function getGroups() {
+	function getRevertedEdits() {
 		global $perflog; $start = microtime(true);
 		global $dbr;
+
+		$res = $dbr->query("SELECT frp_user_params FROM flaggedrevs_promote where frp_user_id = '$this->mUID' ");
+		$res = $res->endArray;
 		
-		if( $this->mIP || !$this->mExists ) {
-			$this->mGroups = array();
+		if ( 1 === preg_match('/revertedEdits=([0-9]+)/', $res[0]['frp_user_params'], $capt)){
+			$this->mReverted = $capt[1];
 		}
-		else {
-			
-			$res = $dbr->query("SELECT ug_group FROM user_groups WHERE ug_user = '$this->mUID' ");
-			$res = $res->endArray;
-			
-			if( !count( $res ) ) {
-				$this->mGroups = array();
-			}
-			else {
-				$this->mGroups = array();
-				foreach( $res as $group ) {
-					$this->mGroups[] = $group['ug_group'];
-				}
-			}
-			
-			unset($res);
-		}
+		
+		unset($res);
 		$perflog->add(__FUNCTION__, microtime(true)-$start );
 	}
 	
@@ -135,10 +181,11 @@ class Counter {
 		global $dbr, $wgNamespaces;
 		
 		$res = $dbr->query("
-				SELECT rev_timestamp, page_title, page_namespace, rev_comment 
+				SELECT rev_timestamp, UNIX_TIMESTAMP(rev_timestamp) as rev_timestamp2, page_title, page_namespace 
 				FROM revision_userindex 
 				JOIN page ON page_id = rev_page 
-				WHERE rev_user_text = '$this->mName' /*SLOW_OK RUN_LIMIT 60 NM*/ 
+				WHERE rev_user = '$this->mUID' AND rev_timestamp > 1
+				/*SLOW_OK RUN_LIMIT 60 NM*/ 
 				ORDER BY rev_timestamp ASC
 			");
 		$res = $res->endArray;
@@ -162,13 +209,7 @@ class Counter {
 			$this->mMonthTotals[$timestamp][ $row['page_namespace'] ]++;
 			
 			if( !$this->mFirstEdit ) {
-				$year = substr($row['rev_timestamp'], 0, 4);
-				$month = substr($row['rev_timestamp'], 4, 2);
-				$day = substr($row['rev_timestamp'], 6, 2);
-				$hour = substr($row['rev_timestamp'], 8, 2);
-				$minute = substr($row['rev_timestamp'], 10, 2);
-				$second = substr($row['rev_timestamp'], 12, 2);
-				$this->mFirstEdit = date('M d, Y H:i:s', mktime($hour, $minute, $second, $month, $day, $year));
+				$this->mFirstEdit = date('Y-m-d H:i:s', $row["rev_timestamp2"] );
 			}
 			
 			if( !isset( $this->mUniqueArticles['namespace_specific'][$row['page_namespace']] ) ) {
@@ -201,10 +242,174 @@ class Counter {
 				}
 			}
 		}
-
+		
+		ksort( $this->mNamespaceTotals);
+		
 		unset($res);
 		$perflog->add(__FUNCTION__, microtime(true)-$start );
 	}
+	
+	
+	/**
+	 * add missing months (0 edits) to the month list
+	 */
+	function fillMonthList() {
+		$new_monthlist = array();
+		$last_monthkey = null;
+	
+		foreach( $this->mMonthTotals as $month => $null ) {
+			$str = explode( '/', $month );
+			$str = strtotime( $str[0] . "-" . $str[1] . "-01" );
+			if( !isset( $first_month ) ) $first_month = $str;
+			$last_month = $str;
+		}
+	
+		for( $date = $first_month; $date <= $last_month; $date += 10*24*60*60 ) {
+			$monthkey = date( 'Y/m', $date );
+	
+			if( $monthkey != $last_monthkey ) {
+				$new_monthlist[] = $monthkey;
+				$last_monthkey = $monthkey;
+			}
+		}
+	
+		$monthkey = date( 'Y/m', str_replace( '/', '', $last_month ) );
+	
+		if( $monthkey != $last_monthkey ) {
+			$new_monthlist[] = $monthkey;
+			$last_monthkey = $monthkey;
+		}
+	
+		foreach( $new_monthlist as $month ) {
+			if( !isset( $this->mMonthTotals[$month] ) ) {
+				$this->mMonthTotals[$month] = array();
+			}
+		}
+	
+		ksort( $this->mMonthTotals );
+	}
+
+	
+	function isOptedOut( $http, $user ) {
+		$x = unserialize( $this->http->get( $this->apibase . 'action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterOptOut.js&rvprop=content&format=php' ) );
+	
+		foreach( $x['query']['pages'] as $page ) {
+			if( !isset( $page['revisions'] ) ) {
+	
+				$x = unserialize( $this->http->get( '//meta.wikimedia.org/w/api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterGlobalOptOut.js&rvprop=content&format=php' ) );
+				foreach( $x['query']['pages'] as $page ) {
+					if( !isset( $page['revisions'] ) ) {
+						$x = unserialize( $this->http->get( $this->baseurl . 'api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/Editcounter&rvprop=content&format=php' ) );
+						foreach( $x['query']['pages'] as $page ) {
+							if( !isset( $page['revisions'] ) ) {
+								return false;
+							}
+							elseif( strpos( $page['revisions'][0]['*'], "Month-Graph:no" ) !== FALSE ) {
+								return true;
+							}
+						}
+					}
+					elseif( $page['revisions'][0]['*'] != "" ) {
+						return true;
+					}
+				}
+			}
+			elseif( $page['revisions'][0]['*'] != "" ) {
+				return true;
+			}
+		}
+	}
+	
+	function isOptedIn( $user ) {
+		$x = unserialize( $this->http->get( $this->apibase . 'action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterOptIn.js&rvprop=content&format=php' ) );
+	
+		foreach( $x['query']['pages'] as $page ) {
+			if( !isset( $page['revisions'] ) ) {
+	
+				$x = unserialize( $this->http->get( 'http://meta.wikimedia.org/w/api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterGlobalOptIn.js&rvprop=content&format=php' ) );
+				foreach( $x['query']['pages'] as $page ) {
+					if( !isset( $page['revisions'] ) ) {
+						$x = unserialize( $this->http->get( $this->baseurl . 'api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/Editcounter&rvprop=content&format=php' ) );
+						foreach( $x['query']['pages'] as $page ) {
+							if( !isset( $page['revisions'] ) ) {
+								return false;
+							}
+							elseif( strpos( $page['revisions'][0]['*'], "Month-Graph:yes" ) !== FALSE ) {
+								return true;
+							}
+						}
+					}
+					elseif( $page['revisions'][0]['*'] != "" ) {
+						return true;
+					}
+				}
+			}
+			elseif( $page['revisions'][0]['*'] != "" ) {
+				return true;
+			}
+		}
+	
+		return false;
+	}
+	
+	function getWhichOptIn( $user ) {
+		$x = unserialize( $this->http->get( $this->baseurl . 'api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterOptIn.js&rvprop=content&format=php' ) );
+	
+		foreach( $x['query']['pages'] as $page ) {
+			if( !isset( $page['revisions'] ) ) {
+	
+				$x = unserialize( $this->http->get( 'http://meta.wikimedia.org/w/api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterGlobalOptIn.js&rvprop=content&format=php' ) );
+				foreach( $x['query']['pages'] as $page ) {
+					if( !isset( $page['revisions'] ) ) {
+						$x = unserialize( $this->http->get( $this->baseurl . 'api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/Editcounter&rvprop=content&format=php' ) );
+						foreach( $x['query']['pages'] as $page ) {
+							if( !isset( $page['revisions'] ) ) {
+								return "false";
+							}
+							elseif( strpos( $page['revisions'][0]['*'], "Month-Graph:yes" ) !== FALSE ) {
+								return "interiot";
+							}
+						}
+					}
+					elseif( $page['revisions'][0]['*'] != "" ) {
+						return "globally";
+					}
+				}
+			}
+			elseif( $page['revisions'][0]['*'] != "" ) {
+				return "locally";
+			}
+		}
+	
+		return "false";
+	}
+	
+	/**
+	 * @param object $http
+	 * @return Ambigous <multitype:multitype: , unknown>
+	 */
+	function getNamespaces() {
+	
+		$x = unserialize( $this->http->get( $this->apibase . 'action=query&meta=siteinfo&siprop=namespaces&format=php' ) );
+	
+		unset( $x['query']['namespaces'][-2] );
+		unset( $x['query']['namespaces'][-1] );
+	
+		$res = array(
+				'ids' => array(),
+				'names' => array()
+		);
+	
+		foreach( $x['query']['namespaces'] as $id => $ns ) {
+			$nsname = ( $ns['*'] == "" ) ? 'Main' : $ns['*'];
+			$res['ids'][$nsname] = $id;
+			$res['names'][$id] =  $nsname;
+		}
+
+		return $res;
+		
+	}
+	
 	
 	function getMonthTotals() {
 		return $this->mMonthTotals;
@@ -232,6 +437,10 @@ class Counter {
 	
 	function getDeleted() {
 		return $this->mDeleted;
+	}
+	
+	function getReverted() {
+		return $this->mReverted;
 	}
 	
 	function getLive() {

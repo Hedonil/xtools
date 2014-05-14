@@ -124,9 +124,9 @@ td.date {
 	font-weight: bold;
 }
 table.months td {
-	font-size: 75%;
+	font-size: 85%;
 	height:10px;
-	}
+}
 div.red, div.green {
 	height:1em;
 	float:left;

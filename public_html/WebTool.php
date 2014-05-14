@@ -60,7 +60,7 @@ class WebTool {
 	private $mOutput;
 
 	function __construct( $toolname = null, $smarty_name = null, $dont = array() ) {
-		global $wgRequest, $wtConfigTitle, $starttime, $I18N;
+		global $wgRequest, $wtConfigTitle, $starttime, $I18N, $sitenotice;
 		
 		$this->starttime = $starttime;
 		
@@ -346,6 +346,11 @@ class WebTool {
 		}
 		
 		return $this->numberFormater->format($number);
+	}
+	
+	public function dateFmt( $date ){
+		$datetime = new DateTime($date);
+		return $this->dateFormater->format($datetime);
 	}
 	
 	public function iin_array( $needle, $haystack ) {

@@ -27,7 +27,6 @@ class Counter {
 	public $baseurl;
 	public $apibase;
 	public $http;
-	public $iName;  //input username
 	
 	private $mName;
 	private $mIP;
@@ -45,8 +44,9 @@ class Counter {
 	private $mUniqueArticles = array( 'total', 'namespace_specific' );
 	private $mFirstEdit;
 	private $mAveragePageEdits;
+	private $mAutoEdits;
 	
-	private $chMonthly;
+#	private $chMonthly;
 	
 	function __construct( $user, $wikibase ) {
 		
@@ -54,11 +54,13 @@ class Counter {
 		$this->baseurl = 'http://'.$wikibase;
 		$this->apibase = $this->baseurl.'/w/api.php?';
 		
-		$this->iName = $user;
-		
+		$this->mName = $user;
 		$this->checkIP();
+		$this->checkExists();
+	}
+	
+	function analyze(){
 		
-#		$this->checkExists();
 		$this->getUserInfo();
 		
 		$this->getCounts();
@@ -86,7 +88,7 @@ class Counter {
 			'list' 	 => 'users',
 			'format' => 'json',
 			'usprop' => 'blockinfo|groups|implicitgroups|editcount|registration',
-			'ususers'=> $this->iName
+			'ususers'=> $this->mName
 		);
 
 		$res = json_decode( $this->http->get( $this->apibase.http_build_query($data)) );
@@ -95,6 +97,7 @@ class Counter {
 			$this->mUID = $res->query->users[0]->userid;
 			$this->mName = urldecode($res->query->users[0]->name);
 			$this->mGroups = $res->query->users[0]->groups;
+				unset($this->mGroups[ array_search("*", $this->mGroups) ]);
 			$this->mRegistration = $res->query->users[0]->registration;
 			$this->mExists = true;
 		}
@@ -107,14 +110,14 @@ class Counter {
 	function checkExists() {
 		global $perflog; $start = microtime(true);
 		global $dbr;
-		
+	
 		if( $this->mIP ) {
 			$this->mExists = true;
 			$this->mUID = 0;
 		}
 		else {
 			
-			$res = $dbr->query("Select user_id FROM user WHERE user_name = '$this->mName' ");
+			$res = $dbr->query("Select user_id FROM user WHERE user_name = '".$dbr->strencode($this->mName)."' ");
 			$res = $res->endArray;
 
 			if( !count( $res ) ) {
@@ -128,7 +131,7 @@ class Counter {
 			
 			unset($res);
 		}
-		$perflog->add('checkExists', microtime(true)-$start );
+		$perflog->add(__FUNCTION__, microtime(true)-$start );
 	}
 
 	
@@ -289,6 +292,53 @@ class Counter {
 		ksort( $this->mMonthTotals );
 	}
 
+	/**
+	 * Modul for standalone call from /autoedits
+	 */
+	public function calcAutoEditsDB( &$dbr, $begin, $end, $api = false ) {
+		global $perflog; $start = microtime(true);
+		
+		$AEBTypes = $this->getAEBTypes();
+		$this->getCounts();
+	
+		$cond_begin = ( $begin ) ? 'AND UNIX_TIMESTAMP(rev_timestamp) > ' . $dbr->strencode( strtotime( $begin )) : null;
+		$cond_end 	= ( $end ) ? 'AND UNIX_TIMESTAMP(rev_timestamp) < ' . $dbr->strencode( strtotime( $end )) : null;
+	
+		$contribs = array();
+		$error = false;
+		$query = "";
+		foreach( $AEBTypes as $name => $check ) {
+				
+			$cond_tool = 'AND rev_comment ' . $check['type'] . ' \'' . $check['query'] . '\'';
+				
+			$query .= "UNION
+			SELECT '$name' as toolname, count(*) as count
+			FROM revision_userindex
+			WHERE rev_user_text = '$this->mName' $cond_begin $cond_end $cond_tool
+			";
+		}
+		$query = substr( $query, 6 );
+		$res = $dbr->query( $query );
+	
+		$sum = 0;
+		foreach ( $res->endArray as $i => $item ){
+			$contribs["tools"][$i]["toolname"] = $item['toolname'];
+			$contribs["tools"][$i]["count"] = $item['count'];
+			$contribs["tools"][$i]["shortcut"] = $AEBTypes[ $item["toolname"] ]["shortcut"];
+			$sum += $item["count"];
+		}
+		
+		$contribs["total"] = $sum;
+		$contribs["pct"] = number_format( ( ( $this->mTotal ? $sum / $this->mTotal : 0 ) *100 ), 2);
+		$contribs["editcount"] = $this->mTotal;
+		
+		#$this->mAutoEdits = 
+		$perflog->add(__FUNCTION__, microtime(true)-$start );
+		return $contribs;
+		
+		#unset( $contribs, $res );
+	}
+	
 	
 	function isOptedOut( $http, $user ) {
 		$x = unserialize( $this->http->get( $this->apibase . 'action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterOptOut.js&rvprop=content&format=php' ) );
@@ -465,5 +515,113 @@ class Counter {
 	
 	function getAveragePageEdits() {
 		return $this->mAveragePageEdits;
+	}
+	function getAutoEdits(){
+		return $this->mAutoEdits;
+	}
+	
+	static function getAEBTypes(){
+		
+		$AEBTypes = array(
+				'Huggle' => array(
+						'type' => 'RLIKE',
+						'query' => '.*(\[\[WP:HG\|HG\]\]|WP:Huggle).*',
+						'regex' => '/.*(\[\[WP:HG\|HG\]\]|WP:Huggle).*/',
+						'shortcut' => 'WP:HG'
+					),
+				
+				'Twinkle' => array( 
+						'type' => 'LIKE',
+						'query' => '%WP:TW%',
+						'regex' => '/.*WP:TW.*/',
+						'shortcut' => 'WP:TW'
+					),
+
+				'Articles For Creation tool' => array(
+						'type' => 'LIKE',
+						'query' => '%([[WP:AFCH|AFCH]])%',
+						'regex' => '/.*\(\[\[WP:AFCH\|AFCH\]\]\).*/',
+						'shortcut' => 'WP:AFCH'
+					),
+				
+				'AutoWikiBrowser' => array(
+						'type' => 'RLIKE',
+						'query' => '.*(AutoWikiBrowser|AWB).*',
+						'regex' => '/.*(AutoWikiBrowser|AWB).*/',
+						'shortcut' => 'WP:AWB' 
+					),
+				
+				'Friendly' => array( 
+						'type' => 'LIKE', 
+						'query' => '%WP:FRIENDLY%',
+						'regex' => '/.*WP:FRIENDLY.*/',
+						'shortcut' => 'WP:FRIENDLY'
+					),
+				
+				'FurMe' => array( 
+						'type' => 'RLIKE', 
+						'query' => '.*(User:AWeenieMan/furme|FurMe).*',
+						'regex' => '/.*(User:AWeenieMan\/furme|FurMe).*/',
+						'shortcut' => 'WP:FURME' 
+					),
+				
+				'Popups' => array( 
+						'type' => 'LIKE', 
+						'query' => '%Wikipedia:Tools/Navigation_popups%',
+						'regex' => '/.*Wikipedia:Tools\/Navigation_popups.*/',
+						'shortcut' => 'Wikipedia:Tools/Navigation_popups' 
+					),
+				
+				'MWT' => array( 
+						'type' => 'LIKE', 
+						'query' => '%User:MichaelBillington/MWT%',
+						'regex' => '/.*User:MichaelBillington\/MWT.*/',
+						'shortcut' => 'User:MichaelBillington/MWT' 
+					),
+				
+				'NPWatcher' => array( 
+						'type' => 'LIKE', 
+						'query' => '%WP:NPW%',
+						'regex' => '/.*WP:NPW.*/',
+						'shortcut' => 'WP:NPW' 
+					),
+				
+				'Amelvand' => array( 
+						'type' => 'LIKE', 
+						'query' => 'Reverted % edit% by % (%) to last revision by %',
+						'regex' => '^Reverted.*edit.*by .* \(.*\) to last revision by .*/',
+						'shortcut' => 'User:Gracenotes/amelvand.js' 
+					),
+				
+				'Igloo' => array( 
+						'type' => 'RLIKE', 
+						'query' => '.*(User:Ale_jrb/Scripts/igloo|GLOO).*',
+						'regex' => '/.*(User:Ale_jrb\/Scripts\/igloo|GLOO).*/',
+						'shortcut' => 'WP:IGL' 
+					),
+				
+				'HotCat' => array( 
+						'type' => 'LIKE', 
+						'query' => '%(using [[WP:HOTCAT|HotCat]])%',
+						'regex' => '/.*\(using \[\[WP:HOTCAT\|HotCat\]\]\).*/',
+						'shortcut' => 'WP:HOTCAT' 
+					),
+				
+				'STiki' => array( 
+						'type' => 'LIKE', 
+						'query' => '%STiki%',
+						'regex' => '/.*STiki.*/',
+						'shortcut' => 'WP:STiki' 
+					),
+				
+				'Dazzle!' => array( 
+						'type' => 'LIKE', 
+						'query' => '%Dazzle!%',
+						'regex' => '/.*Dazzle\!.*/',
+						'shortcut' => 'WP:Dazzle!' 
+					),
+		);
+		
+		return $AEBTypes;
 	}
 }

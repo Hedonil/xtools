@@ -1,27 +1,25 @@
 <?php
+DEFINE('STARTTIME', microtime(True) );
+DEFINE('STARTMEM', memory_get_usage(true) );
+DEFINE('PEACHY_BASE_SYS_DIR', '/data/project/newwebtest' );
+DEFINE('XTOOLS_BASE_SYS_DIR', '/data/project/newwebtest' );
+DEFINE('XTOOLS_BASE_WEB_DIR', '//tools.wmflabs.org/newwebtest' );
 
 class Perflog {
 	public $stack = array();
 	
 	function add( $modul, $time ){
-		array_push( $this->stack, array("modul" => $modul, "time" => number_format($time, 3) ));
+		array_push( $this->stack, array("modul" => $modul, "time" => number_format($time*1000, 2) ));
 	}
 	function getOutput(){
-		if( count($this->stack) == 0){ return null;}
-		$out = "<div><table style='margin:50px;'><tr><td>modul</td><td>time(sec)</td></tr>";
-		foreach ($this->stack as $val){
-			$out .= "<tr><td>".$val["modul"]."</td><td>".$val["time"]."</td></tr>";
-		}
-		$out .= "</table>";
-		return $out;
+		echo "<pre>"; print_r($this->stack); echo "</pre>";
 	}
 }
 $perflog = new Perflog();
-$starttime = microtime(True);
 
 // Incudes
 	echo "<!--";
-	require_once( '/data/project/newwebtest/Peachy/Init.php' );
+	require_once( PEACHY_BASE_SYS_DIR . '/Peachy/Init.php' );
 	echo "-->";
 	require_once( 'I18N.php' );
 	include( 'sitenotice.php' );
@@ -32,8 +30,7 @@ $starttime = microtime(True);
  *
  */
 class WebTool {
-	public $basePath = "//tools.wmflabs.org/newwebtest";
-	private $starttime;
+	public $basePath = XTOOLS_BASE_WEB_DIR;
 	
 	public $toolname;
 	public $moreheader;
@@ -41,13 +38,18 @@ class WebTool {
 	public $sitenotice;
 	public $alert;
 	public $error;
+	public $replag;
+	
+	public $replagtime;
 	
 	public $title;
+	
 	public $content;
 	
 	public $sourcecode;
 	public $bugreport;
 	public $executed;
+	public $memused;
 	
 	public $uselang;
 	public $translate;
@@ -59,25 +61,19 @@ class WebTool {
 	private $dateFormater;
 	private $mOutput;
 
-	function __construct( $toolname = null, $smarty_name = null, $dont = array() ) {
-		global $wgRequest, $wtConfigTitle, $starttime, $I18N, $sitenotice;
+	function __construct( $viewtitle = null, $configtitle = null, $options = array() ) {
+		global $wgRequest, $starttime, $startmem, $I18N, $sitenotice, $lang, $wiki, $url, $dbr, $site;
 		
-		$this->starttime = $starttime;
+		//old style -> global object
+		$wgRequest = new WebRequest();
 		
-		//Get new WebReuest object (Peachy)
-		if( is_null( $wgRequest ) ) {
-
-			//old style -> global object
-			$wgRequest = new WebRequest();
-
-			//new style -> part of WebTool object
-			$this->webRequest = &$wgRequest;
-		}
+		$this->webRequest = &$wgRequest;
+		$this->getWikiInfo();
 		
-		$this->uselang = ( $wgRequest->getSafeVal('bool', 'uselang')) ? $wgRequest->getSafeVal('uselang') : "en";
+		$this->uselang = $wgRequest->getSafeVal( 'uselang', 'en');
 		$I18N->setLang( $this->uselang );
 		
-		$this->toolname = $toolname;
+		$this->toolname = $viewtitle;
 		$this->sourcecode = '<a href="//github.com/x-Tools/xtools/" >'.$I18N->msg('source').'</a> |';
 		$this->bugreport = '<a href="//github.com/x-Tools/xtools/issues" >'.$I18N->msg('bugs').'</a> |';
 		$this->translate = $I18N->msg('translatelink');
@@ -88,46 +84,34 @@ class WebTool {
 		
 		$this->sitenotice = ( $sitenotice ) ? $sitenotice : null;
 		
-		$wtConfigTitle = $smarty_name;
-		
 		
 		mb_internal_encoding("utf-8"); 
 		header('content-type: text/html; charset: utf-8'); 
 		
-		error_reporting(E_ALL|E_STRICT);
-		ini_set("display_errors", 1);
+#		error_reporting(E_ALL|E_STRICT);
+#		ini_set("display_errors", 1);
+
 		
-		if( !in_array( 'showonlyerrors', $dont ) ) { 
-			error_reporting(E_ERROR);
-		}
+		if( in_array( 'showonlyerrors', $options ) ) { error_reporting(E_ERROR); }
 		
-		
-		if( !in_array( 'getwikiinfo', $dont ) ) self::getWikiInfo();
-		
-		self::setDBVars();
-		
-		if( !in_array( 'peachy', $dont ) ) {
-			self::loadPeachy();
-		}
-		
-		if( !in_array( 'database', $dont ) ) {
-			self::loadDatabase();
+		if( in_array( 'database', $options ) ) { $dbr = $this->loadDatabase( $lang, $wiki ); }
 			
-			if( !in_array( 'replag', $dont ) ) {
-				$replag = self::getReplag();
-				if ($replag[0] > 120) {
-					$content->assign( 'replag', $phptemp->get_config_vars( 'highreplag', $replag[1] ) );
-				}
-			}
-		}
-		
+		if( in_array( 'api', $options ) ) { $site = $this->loadPeachy( $url ); }
+
 // 		if( !in_array( 'addstat', $dont ) ) {
 // 			require_once( '/data/project/xtools/stats.php' );
 // 			addStatV3( $toolname );
 // 		}
+		
+// 		$this->replagtime = $dbr->replagtime;
+// 		if ( $this->replagtime > 120 ){
+// 			$minutes = number_format( $this->replagtime / 60, 1);
+// 			$timemsg = $I18N->msg( 'minutes', array( "variables" => array($minutes)));
+// 			$this->replag = $I18N->msg('highreplag', array("variables" => array( $timemsg) ) );
+// 		}
+		
 	
 	}
-   
 	
    static function loadForApi( $toolname, $showonlyerrors = true, $db = true ) {
       
@@ -145,68 +129,83 @@ class WebTool {
       
       if( !$db ) return;
       
-      self::setDBVars();
-      self::loadDatabase();
+      $this->loadDatabase();
       
-			require_once( '/data/project/xtools/stats.php' );
-			addStatV3( $toolname );
+#			require_once( '/data/project/xtools/stats.php' );
+#			addStatV3( $toolname );
       
-      self::loadPeachy();
+      $this->loadPeachy();
       
    }
    
-	static function setMemLimit( $mb = 512 ) {
+	function setMemLimit( $mb = 512 ) {
 		ini_set("memory_limit", $mb . 'M' );
 	}
    
-	static function loadPeachy() {
-		global $url, $pgVerbose, $site;
+	public function loadPeachy( $url ) {
+		global $pgVerbose;
 		
 		$pgVerbose = array();
-		$site = Peachy::newWiki( null, null, null, 'http://'.$url.'/w/api.php' );
 
+		return Peachy::newWiki( null, null, null, 'http://'.$url.'/w/api.php' );
 	}
 	
-   static function setDBVars() {
-      global $toolserver_username, $toolserver_password;
-
-//      $toolserver_mycnf = parse_ini_file("/data/project/xtools/replica.my.cnf");
-      $toolserver_mycnf = parse_ini_file("/data/project/newwebtest/replica.my.cnf");
-      $toolserver_username = $toolserver_mycnf['user'];
-      $toolserver_password = $toolserver_mycnf['password'];
-      unset($toolserver_mycnf);
-   }
-   
-   
-	static function loadDatabase( $api = false ) {
-		global $lang, $wiki, $url, $phptemp, $dbr, $toolserver_username, $toolserver_password;
+	function loadDBCredentials(){
+		global $dbUser, $dbPwd;
 		
-		self::setDBVars();
-		
-		try {
-			if( $wiki = 'wikipedia' || $wiki = 'wikimedia' ) $wiki = "wiki";
-			$res['server'] = $lang.$wiki.".labsdb";
-			$res['dbname'] = $lang.$wiki."_p";
-			
-			if ($wiki == "wikidata") {
-				$res['dbname'] = 'wikidatawiki_p';
-				$res['server'] = 'wikidatawiki.labsdb';
-			}
-			
-			$dbr = new Database( 
-					$res['server'], 
-					$toolserver_username, 
-					$toolserver_password, 
-					$res['dbname']
-			);
-		} 
-		catch( DBError $e ) {
-			if( !$api ) self::toDie( $phptemp->get_config_vars( 'mysqlerror', $e->getMessage() ) );
-			return array( 'error' => 'mysqlerror', 'info' => $e->getMessage() );
+		try{
+			$inifile = XTOOLS_BASE_SYS_DIR . "/replica.my.cnf";
+			$iniVal = parse_ini_file($inifile);
+			$dbUser = $iniVal["user"];
+			$dbPwd  = $iniVal["password"];
+			unset($iniVal);
+		}
+		catch (Exception $e){
+			;
 		}
 	}
 	
-	static function getWikiInfo() {
+	public function loadDatabase( $lang, $wiki) {
+		global $dbUser, $dbPwd;
+		
+		$this->loadDBCredentials();
+	
+		if( $wiki = 'wikipedia' || $wiki = 'wikimedia' ) $wiki = "wiki";
+		$server = $lang.$wiki.".labsdb";
+		$dbname = $lang.$wiki."_p";
+		
+		if ($wiki == "wikidata") {
+			$server = 'wikidatawiki.labsdb';
+			$dbname = 'wikidatawiki_p';
+		}
+
+		try {	
+			$dbr = new Database($server, $dbUser, $dbPwd, $dbname );
+			#$dbr->__call( 'set_charset' , 'utf8');
+			$dbr->replagtime = $this->getReplag( $dbr );
+			
+			return $dbr;
+		} 
+		catch( DBError $e ) {
+			#$this->toDie( 'mysqlerror', $e->getMessage() );
+			return null;
+		}
+	}
+
+	function getReplag( &$dbr ) {
+
+		$res = $dbr->query("
+				SELECT ( UNIX_TIMESTAMP() - UNIX_TIMESTAMP(rc_timestamp) ) AS replag
+				FROM recentchanges
+				ORDER BY rc_timestamp DESC
+				LIMIT 1
+			");
+		
+		return floor( $res[0]['replag'] );
+	}
+	
+	
+	function getWikiInfo() {
 		global $wgRequest, $lang, $wiki, $url;
 		
 		$wiki = $wgRequest->getSafeVal( 'wiki', 'wikipedia' );
@@ -214,11 +213,14 @@ class WebTool {
 		$url = $lang.'.'.$wiki.'.org';
 	}
 	
-	public function toDie( $msg ) {
-		global $content;
+	public function toDie( $msgStr , $var=null ) {
+		global $I18N;
 		
-		$content->assign( "error", $msg );
-		self::assignContent();
+		if( is_string($var) ){ $var = array($var); }
+		
+		$msg = $I18N->msg( $msgStr , array("variables" => $var) );		
+		$this->assign( "error", $msg );
+		$this->showPage();
 	}
 	
 	
@@ -228,103 +230,6 @@ class WebTool {
 		echo "</pre>";
 	}
 	
-	static function getTimeString( $secs ) {
-		$r = implode( ', ', self::getTimeArray( $secs ) );
-		
-		return $r;
-	}
-	
-	static function getTimeArray( $secs ) {
-		global $I18N;
-		
-		if( !$secs ) return array( '0 ' .  $I18N->msg( 's' ) );
-
-		$second = 1;
-		$minute = $second * 60;
-		$hour = $minute * 60;
-		$day = $hour * 24;
-		$week = $day * 7;
-		$month = $day * ( 365 / 12 );
-
-		$r = array();
-		if ($secs > $month) {
-			$count = 0;
-			for( $i = $month; $i <= $secs; $i += $month ) {
-				$count++;
-			}
-
-			$r[] = $count . ' ' . $I18N->msg( 'mo' );
-			$secs -= $month * $count;
-		}
-		if ($secs > $week) {
-			$count = 0;
-			for( $i = $week; $i <= $secs; $i += $week ) {
-				$count++;
-			}
-			 
-			$r[] = $count . ' ' . $I18N->msg( 'w' );
-			$secs -= $week * $count;
-		}
-		if ($secs > $day) {
-			$count = 0;
-			for( $i = $day; $i <= $secs; $i += $day ) {
-				$count++;
-			}
-			 
-			$r[] = $count . ' ' . $I18N->msg( 'd' );
-			$secs -= $day * $count;
-		}
-		if ($secs > $hour) {
-			$count = 0;
-			for( $i = $hour; $i <= $secs; $i += $hour ) {
-				$count++;
-			}
-			 
-			$r[] = $count . ' ' . $I18N->msg( 'h' );
-			$secs -= $hour * $count;
-		}
-		if ($secs > $minute) {
-			$count = 0;
-			for( $i = $minute; $i <= $secs; $i += $minute ) {
-				$count++;
-			}
-			 
-			$r[] = $count . ' ' . $I18N->msg( 'm' );
-			$secs -= $minute * $count;
-		}
-		if ($secs) {
-			$r[] = $secs . ' ' . $I18N->msg( 's' );
-		}
-		
-		return $r;
-	}
-	
-	static function getReplag( $conn = null ) {
-		if( is_null( $conn ) ) {
-			global $dbr;
-			$conn = &$dbr;
-		}
-		
-		$res = $conn->query("
-				SELECT ( UNIX_TIMESTAMP() - UNIX_TIMESTAMP(rc_timestamp) ) AS replag
-				FROM recentchanges
-				ORDER BY rc_timestamp DESC
-				LIMIT 1
-			");
-		$seconds = floor( $res[0]['replag'] );
-		$text = self::getTimeString( $seconds );
-		
-		return array( $seconds, $text );
-	}
-	
-	static function finishScript() {
-		global $time, $phptemp;
-		
-		$exectime = number_format(microtime( 1 ) - $time, 2, '.', '');
-		$phptemp->assign( "excecutedtime", $phptemp->get_config_vars( 'executed', $exectime ) );
-		self::assignContent();
-	}
-   
 	public function prettyTitle( $s, $capital = false ) {
 		$name = trim( str_replace( array('&#39;','%20'), array('\'',' '), $s ) );
 		$name = urldecode($name);
@@ -340,10 +245,11 @@ class WebTool {
 		return (bool) ( long2ip(ip2long($name)) == $name );
 	}
 	
-	public function numFmt( $number, $decimal = 2, $noZero = false ) {
+	public function numFmt( $number, $decimal = 0, $noZero = false ) {
 		if ( intval($number) == 0 && $noZero ){
 			return null;
 		}
+		$this->numberFormater->setAttribute(NumberFormatter::MAX_FRACTION_DIGITS, $decimal);
 		
 		return $this->numberFormater->format($number);
 	}
@@ -382,7 +288,7 @@ class WebTool {
 				"variables" => array(1),
 				"parsemag" => true,
 		);
-		#	print_r($i18KeyArr);
+
 		foreach( $i18KeyArr as $i => $i18Key ) {
 			$this->content = str_ireplace( '{#'.$i18Key.'#}', $I18N->msg($i18Key, $i18opt ), $this->content );
 		}
@@ -403,21 +309,34 @@ class WebTool {
 	
 	/**
 	 * Finishes script, outputs the things, unsets the objects & vars
-	 * @param unknown $wt
+	 * @return void
 	 */
-	public function showPage( &$wt ){
+	public function showPage(){
 		global $I18N, $perflog;
 		
 		$this->translate_i18n();
-		$exectime = $this->numFmt( (microtime(true) - $this->starttime) );
+		
+		$exectime = $this->numFmt( (microtime(true) - STARTTIME),2 );
 		$this->executed = $I18N->msg( 'executed', array( "variables" => array($exectime) ) );
+		
+		$mem = $this->numFmt( (memory_get_usage(true) - STARTMEM) /1024/1024, 2);
+		$peak = $this->numFmt( (memory_get_peak_usage( true ) /1024/1024) , 2);
+		$this->memused = $I18N->msg( 'memory', array( "variables" => array($mem)) )." (Peak: $peak)";
+		
+		$wt = &$this;
 		include '../templates/main.php';
-		unset($wt);
 	
 		echo $perflog->getOutput();
+		$this->__destruct();
+	}
+	
+	function __destruct(){
+		global $dbr, $wgRequest, $site;
+		
+		if ( isset($dbr) ){ $dbr->close(); }
+		unset( $dbr, $wgRequest, $site );
 		exit(0);
 	}
 
 }
-
 

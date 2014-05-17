@@ -2,77 +2,69 @@
 
 //Requires
 	require_once( '../WebTool.php' );
-	require_once( 'counter.php' );
-#	require_once( '../../Graph.php' );
-	require_once( '../../Graph2.php' );
+	require_once( '../Graph.php' );
+	require_once( '../Counter.php' );
+
 	
 	
 //Load WebTool class
-	$wt = new WebTool( 'Edit counter classic', 'pcount', array("smarty", "sitenotice", "replag") );
+	$wt = new WebTool( 'Edit counter classic', 'pcount', array("database") );
 	WebTool::setMemLimit();
 	
 	$wt->content = getPageTemplate( "form" );
 	$wt->assign("lang", "en");
 	$wt->assign("wiki", "wikipedia");
 	
+	
+	$user = $wgRequest->getVal('user');
+	$user = $wgRequest->getVal('name', $user );
+	
+	$user = str_replace("_", " ", $user);
+	
 //Show form if &article parameter is not set (or empty)
-	if( !$wt->webRequest->getSafeVal( 'getBool', 'user' ) ) {
+	if( !$user ) {
 		$wt->showPage($wt);
 	}
 
 
-$opt_in = array();
-$opt_out = array();
-$no_opt = array();
-$default = 'optin';
+	$opt_in = array();
+	$opt_out = array();
+	$no_opt = array();
+	$default = 'optin';
+	
+	
+	
 
+	$wiki = $wgRequest->getVal('wiki');
+	$lang = $wgRequest->getVal('lang');
+	
+	$url = $lang.'.'.$wiki.'.org';
+	$wikibase = $url;
+	if( $wiki == 'wikidata' ) {
+	    $lang = 'www';
+	    $wiki = 'wikidata';
+	    $wikibase= $url = 'www.wikidata.org';
+	}
 
-$name = str_replace("_", " ", urldecode($wgRequest->getVal('user')));
-$wiki = $wgRequest->getVal('wiki');
-$lang = $wgRequest->getVal('lang');
+//Create new Counter object
+	$cnt = new Counter( $user, $wikibase );
 
-$url = $lang.'.'.$wiki.'.org';
-$wikibase = $url;
-if( $wiki == 'wikidata' ) {
-    $lang = 'www';
-    $wiki = 'wikidata';
-    $wikibase= $url = 'www.wikidata.org';
-}
+	if( !$cnt->getExists() ) {
+	   $wt->toDie( 'nosuchuser', $cnt->getName() );
+	}
 
-$cnt = new Counter( $name, $wikibase );
-
-#print_r($cnt->getMonthTotals());die;
-$wgNamespaces = $cnt->getNamespaces();
-
-// $graphArray = array(
-//    'names' => $wgNamespaces['names'],
-//    'monthly' => $cnt->getMonthTotals(),
-//    'gross' => $cnt->getNamespaceTotals(),
-// );
-
-
-
-// $gdata = array();
-// foreach ( $cnt->getNamespaceTotals() as $ns => $count){
-// 	$gdata[ $wgNamespaces["names"][$ns] ] = $count;
-// }
-// #print_r($gdata);
-// $graphNS = xGraph::makePie( $gdata );
-// unset($gdata);
-
-$graphNS = xGraph::makePieGoogle( $cnt->getNamespaceTotals() );
-$legendNS = xGraph::makeLegendTable(  $cnt->getNamespaceTotals(), $cnt->getNamespaces() );
-$graphMonths = xGraph::makeHorizontalBar( "month", $cnt->getMonthTotals(), 800);
-$graphYears = xGraph::makeHorizontalBar( "year", $cnt->getMonthTotals(), 800);
-
-
-if( !$cnt->getExists() ) {
-   $wt->error = $I18N->msg('nosuchuser')." ".$cnt->getName();
-   $wt->showPage($wt);
-}
+	$cnt->analyze();
+	$graphNS = xGraph::makePieGoogle( $cnt->getNamespaceTotals() );
+	#$graphNS = "../tmp/".xGraph::makePie( $cnt->getNamespaceTotals() );
+	$legendNS = xGraph::makeLegendTable(  $cnt->getNamespaceTotals(), $cnt->getNamespaces() );
+	
+	$graphMonths = xGraph::makeHorizontalBar( "month", $cnt->getMonthTotals(), 800);
+	$graphYears = xGraph::makeHorizontalBar( "year", $cnt->getMonthTotals(), 800);
 
 
 // Get TopEdited Pages
+	$wgNamespaces = $cnt->getNamespaces();
+	
 	$uniqueEdits = $cnt->getUniqueArticles();
 	ksort($uniqueEdits['namespace_specific']);
 	
@@ -113,38 +105,39 @@ if( !$cnt->getExists() ) {
 	}
 
 
-
-$wt->content = getPageTemplate( "result" );
-
-$wt->assign( "username", $cnt->getName() ); 
-$wt->assign( "usernameurl", rawurlencode($cnt->getName()) );
-$wt->assign( "url", $url );
-$wt->assign( "loadwiki", "&wiki=$wiki&lang=$lang" );
-$wt->assign( "groups", implode( ', ', $cnt->getGroupList() ) );
-
-if( $cnt->getLive() > 0) {}
+//Output stuff
+	$wt->content = getPageTemplate( "result" );
 	
-$wt->assign( "firstedit", $wt->dateFmt( $cnt->getFirstEdit() ) );
-$wt->assign( "unique", 	  $wt->numFmt( count($uniqueEdits['total']) ) );
-$wt->assign( "average",   $cnt->getAveragePageEdits() );
-$wt->assign( "live", 	  $wt->numFmt( intval( $cnt->getLive() ) ) );
-$wt->assign( "deleted",   $wt->numFmt( intval( $cnt->getDeleted() ) ) );
-$wt->assign( "reverted",  $wt->numFmt( intval( $cnt->getReverted() ) ) );
-$wt->assign( "total", 	  $wt->numFmt( intval( $cnt->getTotal() ) ) );
-
-$wt->assign( "namespace_legend", $legendNS );
-#$wt->assign( "graph", $graph->pie( $I18N->msg('namespacetotals') ) );
-$wt->assign( "namespace_graph", '<img src="'.$graphNS.'"  />' );
-
-if( $cnt->isOptedIn( $cnt->getName() ) ) {
-	$wt->assign( "yearcounts", $graphYears );
-	$wt->assign( "monthcounts", $graphMonths );
-	$wt->assign( "topedited", $out );
-}
-else {
-	$wt->assign( "monthcounts", $I18N->msg( "nograph", array( "variables"=> array( $cnt->getName(), $url) )) );
-	$wt->assign( "topedited", $I18N->msg( "nograph", array( "variables"=> array( $cnt->getName(), $url) )) );
-}
+	$wt->assign( "username", $cnt->getName() ); 
+	$wt->assign( "usernameurl", rawurlencode($cnt->getName()) );
+	$wt->assign( "url", $url );
+	$wt->assign( "loadwiki", "&wiki=$wiki&lang=$lang" );
+	$wt->assign( "groups", implode( ', ', $cnt->getGroupList() ) );
+	
+	if( $cnt->getLive() > 0) {}
+		
+	$wt->assign( "firstedit", $wt->dateFmt( $cnt->getFirstEdit() ) );
+	$wt->assign( "unique", 	  $wt->numFmt( count($uniqueEdits['total']) ) );
+	$wt->assign( "average",   $cnt->getAveragePageEdits() );
+	$wt->assign( "live", 	  $wt->numFmt( intval( $cnt->getLive() ) ) );
+	$wt->assign( "deleted",   $wt->numFmt( intval( $cnt->getDeleted() ) ) );
+	$wt->assign( "reverted",  $wt->numFmt( intval( $cnt->getReverted() ) ) );
+	$wt->assign( "total", 	  $wt->numFmt( intval( $cnt->getTotal() ) ) );
+	
+	$wt->assign( "namespace_legend", $legendNS );
+	#$wt->assign( "graph", $graph->pie( $I18N->msg('namespacetotals') ) );
+	$wt->assign( "namespace_graph", '<img src="'.$graphNS.'"  />' );
+	
+	if( $cnt->isOptedIn( $cnt->getName() ) ) {
+		$wt->assign( "yearcounts", $graphYears );
+		$wt->assign( "monthcounts", $graphMonths );
+		$wt->assign( "topedited", $out );
+	}
+	else {
+		$wt->assign( "yearcounts", $I18N->msg( "nograph", array( "variables"=> array( $cnt->getName(), $url) )));
+		$wt->assign( "monthcounts", '');
+		$wt->assign( "topedited", '');
+	}
 
 
 // $wt->moreheader =
@@ -152,9 +145,9 @@ else {
 //    '<script src="//bits.wikimedia.org/skins-1.5/common/wikibits.js?urid=257z32_1264870003" type="text/javascript"></script>' . "\n\t" .
 //    '<script src="//tools.wmflabs.org/xtools/counter_commons/NavFrame.js" type="text/javascript"></script>'
 // ;
-$wt->assign( "popup", true );
+
 unset( $out, $graph, $cnt );
-$wt->showPage($wt);
+$wt->showPage();
 
 
 /**************************************** templates ****************************************
@@ -199,6 +192,7 @@ function getPageTemplate( $type ){
 			<td>{#firstedit#}:</td><td style="padding-left:10px;" >{$firstedit$}</td>
 		</tr>
 	</table>
+	<br >
 	<table>
 		<tr>
 			<td  style="padding-top:10px;">{#unique#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$unique$}</span></td>
@@ -237,6 +231,7 @@ function getPageTemplate( $type ){
 	<h3>{#topedited#}</h3>
 		{$topedited$}
 	<br />
+	
 	';
 	
 	if( $type == "form" ) { return $templateForm; }

@@ -1,5 +1,4 @@
 body {
-	//background-image:url("images/bgpattern.png");
 	background-attachment:fixed;
 	font-family: frutiger linotype,lucida grande,helvetica,arial,sans-serif;
 	font-size: 85%;
@@ -10,43 +9,46 @@ a{
 	text-decoration:none;
 }
 #wrap{
-	background:none;
+	/* background:none; */
 	margin:0 auto;
 	text-align:left;	
 	width:96%;
 }
 #header {
 	padding: 0px 20px 4px 20px;
-	//border: 1px solid #1234aa;
-	//border-bottom: none;
-	//background-color: #000066;
-	//background-image:url("images/gradient.php?color1=50729F&color2=3063A5&size=20");
-	//background-image:url("images/gradient.php?color1=EEEEFF&color2=D0E4EE&size=200");
 	color: #000033;
 }
 #content {
-	background: none;
 	padding: 20px 20px 4px 20px;
-	//border: 1px solid #1234aa; 
-	//border-top: 5px solid #ff6600;
-	//border-bottom:none; 
-	//background-color: #e6e6e6;
-	//background-image:url("//toolserver.org/~soxred93/images/gradient3.png");
-	background-image:url("images/gradient.php?color1=EEEEEE&color2=D0E4EE&size=200");
-	background-repeat:repeat-x;
 	background-color: #D0E4EE;
+	
+	background-image:url("//tools.wmflabs.org/newwebtest/images/gradient.png");
+	background-repeat:repeat-x;
+
+/*	
+	background-image: -webkit-linear-gradient(top, #eeeeee, #d0e4ee); 
+	background-image:    -moz-linear-gradient(top, #eeeeee, #d0e4ee); 
+	background-image:     -ms-linear-gradient(top, #eeeeee, #d0e4ee); 
+	background-image:      -o-linear-gradient(top, #eeeeee, #d0e4ee);
+	background-image:         linear-gradient(to bottom, #eeeeee, #d0e4ee); 
+*/
+	/*http://patorjk.com/gradient-image-generator/*/
+	
 }
 #footer {
-	padding: 2px 20px 20px 20px;
+	padding: 0px 20px 20px 20px;
 	height: 40px;
-	//background-image:url("//toolserver.org/~soxred93/images/gradient4.png");
-	background-image:url("images/gradient.php?color1=D0E4EE&color2=EAEAEA&size=31");
-	background-repeat:repeat-x;
 	background-color: #EAEAEA;
-	//background-color: #000066;
+	
+	background-image: -webkit-linear-gradient(left, #eeeeee, #d0e4ee); /* For Chrome and Safari */
+	background-image:    -moz-linear-gradient(left, #eeeeee, #d0e4ee); /* For old Fx (3.6 to 15) */
+	background-image:     -ms-linear-gradient(left, #eeeeee, #d0e4ee); /* For pre-releases of IE 10*/
+	background-image:      -o-linear-gradient(left, #eeeeee, #d0e4ee); /* For old Opera (11.1 to 12.0) */
+	background-image:         linear-gradient(to right, #eeeeee, #d0e4ee); /* Standard syntax; must be last */
+
+	
 	color: rgb(34,34,34);
 	valign: top;
-	//border: 1px solid #1234aa; 
 	border-top: none;
 }
 .footertext {
@@ -101,13 +103,15 @@ img {
 	margin-bottom:10px;
 }
 input{
-border-width:1px;
-border-color:lightgrey;
-border-style:solid;
-background-color:#f1f1f1;
+	border-width:1px;
+	border-color:lightgrey;
+	border-style:solid;
+	background-color:#f1f1f1;
 }
 
-div.bar { height: 10px; }
+div.bar { 
+	height: 10px; 
+}
 div.outer_bar {
 	border: 1px solid #444;
 	float: left;
@@ -126,6 +130,9 @@ td.date {
 table.months td {
 	font-size: 85%;
 	height:10px;
+}
+.tdnum{
+	text-align:right;
 }
 div.red, div.green {
 	height:1em;
@@ -148,27 +155,37 @@ table.topN td {
 	padding: .1em .3em;
 }
 
-.wikitable,
-.prettytable {
+.wikitable, .prettytable {
     margin: 1em 1em 1em 0;
     //background: #f9f9f9;
     //border: 1px #aaa solid;
+    border-collapse:collapse;
 }
-.wikitable th, .wikitable td,
-.prettytable th, .prettytable td {
-    border: 1px #aaa solid;
-    padding: 0.5em;
-    background: #f9f9f9;
+.wikitable th, .prettytable th  {
+	border: 1px #aaa solid;
+    padding: 0.2em 0.5em 0.5em 0.5em;
+    //background: #f9f9f9;
 }
-.wikitable th,
-.prettytable th {
-    background: #f2f2f2;
-    text-align: center;
+.wikitable td,  .prettytable td{
+    padding: 0.2em 0.5em ;
+    border-right: 1px solid silver;
+    //background: #f9f9f9;
+}
+.wikitable tr, .prettytable tr {
+	border: 1px solid silver;
 }
 
+.legendicon{
+	display: inline-block;
+	height: 10px;
+	width: 5px;
+	padding: 0px 5px;
+	border-radius: 2px;
+}
 .dup {font-weight:bold;color:red}
 .iffy1 {font-style:italic}
 .iffy2 {text-decoration:underline}
+
 #popup {
     /* Necessary: */
     position: absolute;
@@ -183,4 +200,3 @@ table.topN td {
     opacity: .90;
     /* filter: alpha(opacity=90); */
   }
-

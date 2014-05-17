@@ -1,14 +1,21 @@
 <?php
-#define('PATH_JPGRAPH', '/data/project/newwebtest/jpgraph');
-#define('PATH_TMP_IMG', '/data/project/newwebtest/xtools/public_html/tmpimg');
-#define("TTF_DIR", PATH_JPGRAPH.'/fonts/');
+define('PATH_JPGRAPH', '/data/project/newwebtest/jpgraph');
+define('PATH_TMP_IMG', '/data/project/newwebtest/xtools/public_html/tmp');
+define("TTF_DIR", PATH_JPGRAPH.'/fonts/');
+
 #require_once(PATH_JPGRAPH."/jpgraph.php");
 #require_once(PATH_JPGRAPH."/jpgraph_pie.php");
+#require_once(PATH_JPGRAPH.'/jpgraph_line.php');
 #require_once(PATH_JPGRAPH."/jpgraph_pie3d.php");
 class Theme {
-
 }
-
+if(!function_exists('imageantialias'))
+{
+	function imageantialias($image, $enabled)
+	{
+		return false;
+	}
+}
 class xGraph{
 	
 	static function makePieGoogle( $data, $title = NULL ){
@@ -36,20 +43,110 @@ class xGraph{
 		
 		return $chartbase.http_build_query($chdata);
 	}
+	
+	/**
+	 * Page history: TOP Editors
+	 */
+	static function makePieGoogleTopEditors( $total, &$data ){
+#print_r($data);		
+		$i =0;
+		foreach ($data as $user => $details){
+			$val = number_format( ($details["all"] / $total)*100,1);
+			$users[] = $user."  ($val%)";
+			$values[] = $val;
+			$colors[] = str_replace("#", "", XtoolsTheme::GetColorList( $i ));
+			$i++;
+			if ($i == 8) break;
+		}
+		$users[] = "others";
+		$colors[] = str_replace("#", "", XtoolsTheme::GetColorList( 100 ));
+		$values[] = 100-array_sum($values);
+		
+		$chartbase = "//chart.googleapis.com/chart?";
+		$chdata = array(
+				"cht" => "p",
+				"chs" => "600x300",
+				"chf" => "bg,s,00000000",
+				"chp" => '-1.5',
+				"chd" => "t:".implode(",", $values),
+				"chdl" => implode("|", $users),
+				'chdlp'=> 'r|l',
+				"chco" => implode("|", $colors)
+		
+		);
+		
+		return $chartbase.http_build_query($chdata);
+	}
+	
+	static function makeArticleChartGoogle( $type, $data ){
+#print_r($data);
+
+#		$numyears = count($data);
+#		$grapwidth = ($numyears * 45)+250;
+		
+		$maxsizeTotal = 0;
+		$maxeditTotal = 0;
+		foreach( $data as $year => $values){
+			$years[] = $year; 
+			$all[] = $values["all"];
+			$minor[] = $values["minor"];
+			$anon[] = $values["anon"];
+			
+			$maxsize=0;
+			foreach ( $values["months"] as $i => $mdetails ){
+				if( $mdetails["size"] > $maxsize ){ $maxsize = $mdetails["size"]; }  
+			}
+			$tmpssize[] = $maxsize;
+			
+			if ( $values["all"] > $maxeditTotal ){ $maxeditTotal = $values["all"]; }
+			if ( $maxsize > $maxsizeTotal ) { $maxsizeTotal = $maxsize; }
+		}
+		
+		//scaling edits to size
+		$factor = $maxeditTotal / $maxsizeTotal;
+		foreach ( $tmpssize as $value){
+			$size[] = intval( $value * $factor );
+		}
+	
+		$chartbase = "//chart.googleapis.com/chart?";
+		$chdata = array(
+				'cht' => 'bvg',
+				'chs' => '1000x200',
+				"chf" => "bg,s,00000000",
+				'chco' => '4D89F9,55ff55,ff00ff,737373',
+				'chd' => 't3:'.implode(',', $all).'|'.implode(',', $anon).'|'.implode(',', $minor).'|'.implode(',', $size),
+				'chdl' => 'All|IP|Minor|Article size',
+				'chdlp'=> 'r|l',
+				'chds' => 'a',
+				'chbh' => '10,1,15',
+				'chxt' => 'y,y,x,r,r',
+				'chxl' => '1:||Edits||2:|'.implode('|', $years).'|4:||Size (kb)|',
+				'chxr' => '0,0,'.$maxeditTotal.'|3,0,'.$maxsizeTotal,
+
+				'chm' => 'D,737373,3,0,1,1',
+		);
+		
+		return $chartbase.http_build_query($chdata);
+	}
 
 	static function makePie( $data, $title = NULL ){
 		$filename = date('YmdHis').rand().".png";
 		
-		$graph = new PieGraph(800,300,"auto");
-#		$graph->SetAntiAliasing(true);
-		#$graph->SetShadow();
-		#$graph->SetColor('#dde4ee@0.8');
+		$arrVal = array_values($data);
+		foreach ( $data as $nsid => $value){
+			$arrColor[] = XtoolsTheme::GetColorList($nsid);
+		}
+		
+		$graph = new PieGraph(300,280,"auto");
+		$graph->SetAntiAliasing(true);
+#		$graph->SetClipping();
 		
 		$graph->SetTheme( new XtoolsTheme() );
 		$graph->img->SetTransparent("white");
 		
-		$arrVal = array_values($data);
-		$p1 = new PiePlot3D( $arrVal );
+		
+		$p1 = new PiePlot( $arrVal );
+		$p1->ShowBorder(false, true);
 		
 		$p1->SetLabelType(PIE_VALUE_PERCENTAGE);
 		$p1->value->SetFormat('%-.1f %%');
@@ -57,48 +154,47 @@ class xGraph{
 #		$p1->SetGuideLines();		
 		$p1->value->Show();
 		
+		
 		$p1->ExplodeSlice( array_search(max($arrVal), $arrVal) );
-		$p1->SetCenter(0.3,0.5);
+		$p1->SetCenter(0.5,0.5);
 		
 		$p1->SetLegends( array_keys($data) );
 		
 		$graph->legend->SetFont(FF_VERDANA, FS_NORMAL, 10 );
-		$graph->legend->SetLayout(LEGEND_HOR);
+		$graph->legend->SetLayout(LEGEND_VERT);
 		$graph->legend->SetColumns(1);
 		$graph->legend->SetPos(0,0.5,'left','center');
 		$graph->legend->Hide(true);
-		
-		$legend = self::makeLegendTable( $data );
 		#$p1->SetAngle(20);
 		
 #	
 		#$graph->title->Set("A simple 3D Pie plot");
 		#$graph->title->SetFont(FF_FONT1,FS_BOLD);
-		
 		$graph->Add($p1);
-#		$p1->SetSliceColors( array('#55FFFF','#5544F0') );
-
+#		$p1->SetSliceColors( $arrColor );
+		
 		$graph->Stroke(PATH_TMP_IMG.'/'.$filename);
 		
-		return array( "filename" => $filename, "legend" => $legend);
+		return $filename;
 	}
 	
 
 	
 	static function makeLegendTable( &$data, &$namespaces ){
-#print_r($namespaces);		
+		global $wt;
+		
 		$sum = array_sum( $data );
 		$i = 0;
 		$legendNS = '<table style="font-size:85%;" >';
 		foreach ( $data as $nsid => $count ){
-#			$legend[] = "$key: $count · (%-.1f%%) ";
+
 			$color = XtoolsTheme::GetColorList($nsid);
 			$legendNS .= '
 			<tr>
-			<td><span style="display:inline-block; border-radius:2px; height:16px; width:16px; background-color:'.$color.' "></span></td>
+			<td><span style="display:inline-block; border-radius:2px; height:14px; width:14px; background-color:'.$color.' "></span></td>
 			<td>'.$namespaces["names"][$nsid].'</td>
-			<td style="text-align:right"> &nbsp; '.$count.'</td>
-			<td style="text-align:right"> &nbsp; ('.number_format( ($count/$sum)*100, 1).'%)</td>
+			<td style="text-align:right; padding-left:15px;">'.$wt->numFmt($count).'</td>
+			<td style="text-align:right; padding-left:10px;">'.$wt->numFmt( ($count/$sum)*100,1).'%</td>
 			</tr>';
 			
 			$i++;
@@ -108,9 +204,64 @@ class xGraph{
 		return $legendNS;
 	}
 	
+	static function makeArticleChart( $type, $data ){
+		$filename = date('YmdHis').rand().".png";
+		
+		$datay1 = array(20,15,23,15);
+		$datay2 = array(12,9,42,8);
+		$datay3 = array(5,17,32,24);
+		
+		// Setup the graph
+		$graph = new Graph(300,250);
+		$graph->img->SetAntiAliasing(false);
+		$graph->SetScale("textlin");
+		
+		$theme_class=new XtoolsTheme();
+		$graph->SetTheme($theme_class);
+		
+		$graph->title->Set('Filled Y-grid');
+		$graph->SetBox(false);
+		
+		$graph->img->SetAntiAliasing();
+		
+		$graph->yaxis->HideZeroLabel();
+		$graph->yaxis->HideLine(false);
+		$graph->yaxis->HideTicks(false,false);
+		
+		$graph->xgrid->Show();
+		$graph->xgrid->SetLineStyle("solid");
+		$graph->xaxis->SetTickLabels(array('A','B','C','D'));
+		$graph->xgrid->SetColor('#E3E3E3');
+		
+		// Create the first line
+		$p1 = new LinePlot($datay1);
+		$graph->Add($p1);
+		$p1->SetColor("#6495ED");
+		$p1->SetLegend('Line 1');
+		
+		// Create the second line
+		$p2 = new LinePlot($datay2);
+		$graph->Add($p2);
+		$p2->SetColor("#B22222");
+		$p2->SetLegend('Line 2');
+		
+		// Create the third line
+		$p3 = new LinePlot($datay3);
+		$graph->Add($p3);
+		$p3->SetColor("#FF1493");
+		$p3->SetLegend('Line 3');
+		
+		$graph->legend->SetFrameWeight(1);
+		
+		// Output line
+		$graph->Stroke(PATH_TMP_IMG.'/'.$filename);
+		
+		return $filename;
+	}
 	
 	static function makeHorizontalBar( $type, $monthTotals, $width = 500 ) {
-#print_r($monthTotals);die;	
+		global $wt;
+
 #		if( $this->miPhone ) $width = 150;
 
 		if ($type == "year"){
@@ -147,15 +298,16 @@ class xGraph{
 		foreach( $pixels as $month => $namespace_counts ) {
 			$msg .= '<tr>';
 			$imsg .= '<tr class="months">';
-				
-			if( $month_total_edits[$month] != "0" ) {
+			
+			$mtem = $month_total_edits[$month];	
+			if( $mtem != "0" ) {
 				$msg .= '<td title="'.htmlentities( self::getMonthPopup( $monthTotals[$month], $month ), ENT_QUOTES, 'UTF-8').'" class="date">'.$month.'</td>
-						 <td style="text-align:right; padding-right:5px;" >'.$month_total_edits[$month].'</td>';
+						 <td style="text-align:right; padding-right:5px;" >'. $wt->numFmt( $mtem ) .'</td>';
 				$imsg .= '<td class="date" >'.$month.'</td><td>'.$month_total_edits[$month].'</td>';
 			}
 			else {
-				$msg .= '<td class="date" >'.$month.'</td><td>'.$month_total_edits[$month].'</td>\n';
-				$imsg .= '<td class="date" >'.$month.'</td><td>'.$month_total_edits[$month].'</td>';
+				$msg .= '<td class="date" >'.$month.'</td><td>'. $wt->numFmt( $mtem ) .'</td>\n';
+				$imsg .= '<td class="date" >'.$month.'</td><td>'. $wt->numFmt( $mtem ) .'</td>';
 			}
 				
 			ksort( $namespace_counts );
@@ -295,20 +447,7 @@ class XtoolsTheme extends Theme
 		else{
 			return $colors[$num];
 		}
-// 		return array(
-// 				'#FFFB11',
-// 				'#005EBC',
-// 				'#9AEB67',
-// 				'#FF4A26',
-// 				'#FDFF98',
-// 				'#6B7EFF',
-// 				'#BCE02E',
-// 				'#E0642E',
-// 				'#E0D62E',
-// 				'#2E97E0',
-// 				'#02927F',
-// 				'#FF005A',
-// 		);
+
 	}
 
 	function SetupGraph($graph) {
@@ -437,7 +576,7 @@ class XtoolsTheme extends Theme
 			case 'PiePlot':
 				{
 					$plot->SetCenter(0.5, 0.45);
-					$plot->ShowBorder(false);
+					#$plot->ShowBorder(false);
 					$plot->SetSliceColors($this->GetThemeColors());
 					break;
 				}

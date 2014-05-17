@@ -3,6 +3,7 @@
 <head>
 	<title><?php echo $wt->toolname ?> - X's tools</title>
 	<link rel="stylesheet" type="text/css" href="//tools.wmflabs.org/newwebtest/style.css" />
+	<script type="text/javascript" src="//tools.wmflabs.org/newwebtest/sortable.js"></script>
 	<?php echo $wt->moreheader ?>
 	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 </head>
@@ -18,9 +19,9 @@
 		<div id="navigation" class="center container">
 			<a href="<?php echo $wt->basePath?>/ec">Home</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/ec">Edit counter<sup style="color:green; font-size:70%; position:relative;left:-27px; top:-5px; margin-right:-30px"> classic</sup></sup></a> &middot; 
+			<a href="<?php echo $wt->basePath?>/articleinfo/">Page history</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/pages">Pages created</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/autoedits">Automated edits</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/articleinfo/">Page history</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/blame">Article blamer</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/rangecontribs">CIDR</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/autoblock">Autoblock</a> &middot; 
@@ -31,7 +32,7 @@
 		</div>
 
 		<div id="alerts">
-			<?php echo ($wt->alert) ? "<h2 class='alert'> $wt->alert </h2>" : "" ?>
+			<?php echo ($wt->alert) ? "<h3 class='alert'> $wt->alert </h3>" : "" ?>
 			<?php echo ($wt->error) ? "<h2 class='error'> $wt->error </h2>" : "" ?>
 			<h2><?php echo $wt->title ?></h2>
 		</div>
@@ -41,11 +42,11 @@
 		</div>
 		
 		<br />
-		<span><small><?php echo $wt->executed ?></small></span>
+		<span><small><span><?php echo $wt->executed ?></span> &middot; <span><?php echo $wt->memused ?></span></small></span>
 	</div>
 
 	<div id="footer">
-		<hr />
+		<hr style="margin-top:0px;"/>
 		<div style="float:right; display:inline-block">
 			<span >
 				<!-- <a href="//validator.w3.org/check?uri=referer"><img src="//tools.wmflabs.org/xtools/images/xhtml.png" alt="Valid XHTML 1.0 Transitional" height="31" width="88" /></a> -->
@@ -74,7 +75,7 @@
 	</div>
 </div>
 
-<script type="text/javascript">if (window.runOnloadHook) runOnloadHook();</script>
+<script type="text/javascript">if (window.runOnloadHook) runOnloadHook(); if(window.sortables_init) sortables_init();</script>
 
 </body>
 

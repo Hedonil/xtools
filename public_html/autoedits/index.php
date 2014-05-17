@@ -1,55 +1,44 @@
 <?php
 
 //Requires
-   require_once( '../WebTool.php' );
-   require_once( 'base.php' );
+	require_once( '../WebTool.php' );
+	require_once( '../Counter.php' );
 
 //Load WebTool class
-   $wt = new WebTool( 'AutoEdits', 'autoedits', array("smarty", "sitenotice", "replag") );
-   $wt->setMemLimit();
-   
-   $wt->content = getPageTemplate( "form" );
-   $wt->assign( 'lang', 'en');
-   $wt->assign( 'wiki', 'wikipedia');
+	$wt = new WebTool( 'AutoEdits', 'autoedits', array("database") );
+	$wt->setMemLimit();
+	 
+	$wt->content = getPageTemplate( "form" );
+	$wt->assign( 'lang', 'en');
+	$wt->assign( 'wiki', 'wikipedia');
+
+
+	$user = $wt->prettyTitle( $wgRequest->getSafeVal( 'user' ), true );
+	$lang = $wt->webRequest->getSafeVal( 'lang' );
+	$wiki = $wt->webRequest->getSafeVal( 'wiki' );
+	$wikibase = $lang.".".$wiki;
+	$begin = $wt->webRequest->getSafeVal( 'begin' );
+	$end = $wt->webRequest->getSafeVal( 'end' );
 
 //Show form if &article parameter is not set (or empty)
-   if( !$wgRequest->getSafeVal( 'getBool', 'user' ) ) {
-      $wt->showPage($wt);
-   }
-   
-   $user = $wt->prettyTitle( $wgRequest->getSafeVal( 'user' ), true );
-
-//Initialize Peachy
-   try {
-      $userClass = $site->initUser( $user );
-   } 
-   catch( Exception $e ) {
-      $wt->error = $e->getMessage() ;
-      $wt->showPage($wt);
-   }
-
-#   $phptemp->assign( "page", $user );
-   
-	if( !$userClass->exists() ) {
-		$wt->error = $I18N->msg( 'nosuchuser');
-		$wt->showPage($wt);
+	if( !$lang || !$wiki || !$user ) {
+		$wt->showPage();
 	}
 	
-	$useLabs = true;
-	$count = $userClass->get_editcount( false, $dbr );
+	$cnt = new Counter( $user, $wikibase );
+	
+	if( !$cnt->getExists() ) {
+		$wt->error = $I18N->msg( 'nosuchuser');
+		$wt->showPage();
+	}
+
 
 //Start doing the DB request
-   $data = AutoEditsBase::getMatchingEdits( 
-   		$dbr,
-   		$user,
-   		( $wgRequest->getSafeVal( 'getBool', 'begin' ) ) ? $wgRequest->getSafeVal( 'begin' ) : false,
-   		( $wgRequest->getSafeVal( 'getBool', 'end' ) ) ? $wgRequest->getSafeVal( 'end' ) : false,
-   		$count
-   );
- 
+	$data = $cnt->calcAutoEditsDB($dbr, $begin, $end);
+	
 	$list = '<ul>';
 	foreach ( $data["tools"] as $i => $tool  ){
-		$list .= '<li><a href="//'.$url.'/wiki/'.$tool["shortcut"].'">'.$tool["toolname"].'</a> &ndash; '.$wt->numFmt($tool["count"]).'</li>';
+		$list .= '<li><a href="//'.$wikibase.'/wiki/'.$tool["shortcut"].'">'.$tool["toolname"].'</a> &ndash; '.$wt->numFmt($tool["count"]).'</li>';
 	}
 	$list .= '</ul>';
 	
@@ -60,8 +49,8 @@
 	$wt->assign( 'pct', $data['pct'] );
 	
 
-unset( $data, $list );
-$wt->showPage($wt);
+unset( $cnt, $data, $list );
+$wt->showPage();
 
 
 

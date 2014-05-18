@@ -9,7 +9,8 @@
 	
 //Load WebTool class
 	$wt = new WebTool( 'Edit counter classic', 'pcount', array("database") );
-	WebTool::setMemLimit();
+	$wt->setMemLimit();
+	set_time_limit ( 60 );
 	
 	$wt->content = getPageTemplate( "form" );
 	$wt->assign("lang", "en");
@@ -32,9 +33,6 @@
 	$no_opt = array();
 	$default = 'optin';
 	
-	
-	
-
 	$wiki = $wgRequest->getVal('wiki');
 	$lang = $wgRequest->getVal('lang');
 	
@@ -47,13 +45,12 @@
 	}
 
 //Create new Counter object
-	$cnt = new Counter( $user, $wikibase );
+	$cnt = new Counter( $dbr, $user, $wikibase );
 
 	if( !$cnt->getExists() ) {
 	   $wt->toDie( 'nosuchuser', $cnt->getName() );
 	}
 
-	$cnt->analyze();
 	$graphNS = xGraph::makePieGoogle( $cnt->getNamespaceTotals() );
 	#$graphNS = "../tmp/".xGraph::makePie( $cnt->getNamespaceTotals() );
 	$legendNS = xGraph::makeLegendTable(  $cnt->getNamespaceTotals(), $cnt->getNamespaces() );
@@ -116,29 +113,32 @@
 	
 	if( $cnt->getLive() > 0) {}
 		
-	$wt->assign( "firstedit", $wt->dateFmt( $cnt->getFirstEdit() ) );
-	$wt->assign( "unique", 	  $wt->numFmt( count($uniqueEdits['total']) ) );
-	$wt->assign( "average",   $cnt->getAveragePageEdits() );
-	$wt->assign( "live", 	  $wt->numFmt( intval( $cnt->getLive() ) ) );
-	$wt->assign( "deleted",   $wt->numFmt( intval( $cnt->getDeleted() ) ) );
-	$wt->assign( "reverted",  $wt->numFmt( intval( $cnt->getReverted() ) ) );
-	$wt->assign( "total", 	  $wt->numFmt( intval( $cnt->getTotal() ) ) );
+	$wt->assign( "firstedit", 		$wt->dateFmt( $cnt->getFirstEdit() ) );
+	$wt->assign( "unique", 	  		$wt->numFmt( $cnt->getUnique() ) );
+	$wt->assign( "average",   		$wt->numFmt( $cnt->getAveragePageEdits(),2 ) );
+	$wt->assign( "pages_created",   $wt->numFmt( $cnt->getCreated() ) );
+	$wt->assign( "pages_moved",   	$wt->numFmt( $cnt->getMoved() ) );
+	$wt->assign( "reverted",  		$wt->numFmt( $cnt->getReverted() ) );
+	$wt->assign( "live", 	  		$wt->numFmt( $cnt->getLive() ) );
+	$wt->assign( "deleted",   		$wt->numFmt( $cnt->getDeleted() ) );
+	$wt->assign( "total", 	  		$wt->numFmt( $cnt->getTotal() ) );
 	
 	$wt->assign( "namespace_legend", $legendNS );
 	#$wt->assign( "graph", $graph->pie( $I18N->msg('namespacetotals') ) );
 	$wt->assign( "namespace_graph", '<img src="'.$graphNS.'"  />' );
 	
+	$wt->assign( "yearcounts", $graphYears );
+	
 	if( $cnt->isOptedIn( $cnt->getName() ) ) {
-		$wt->assign( "yearcounts", $graphYears );
 		$wt->assign( "monthcounts", $graphMonths );
 		$wt->assign( "topedited", $out );
 	}
 	else {
-		$wt->assign( "yearcounts", $I18N->msg( "nograph", array( "variables"=> array( $cnt->getName(), $url) )));
-		$wt->assign( "monthcounts", '');
+		$wt->assign( "monthcounts", $I18N->msg( "nograph", array( "variables"=> array( $cnt->getName(), $url) )));
 		$wt->assign( "topedited", '');
 	}
 
+	$wt->assign( 'exp_color_table', ''); //xGraph::makeColorTable());
 
 // $wt->moreheader =
 //    '<link rel="stylesheet" href="//tools.wmflabs.org/xtools/counter_commons/NavFrame.css" type="text/css" />' . "\n\t" .
@@ -177,44 +177,61 @@ function getPageTemplate( $type ){
 	$templateResult = '
 		
 	<script type="text/javascript">
-	var collapseCaption = "{#hide#}";
-	var expandCaption = "{#show#}";
+	function switchShow( id ) {
+		if(document.getElementById(id).style.display == "none") {
+			document.getElementById(id).style.display = "block";
+		}
+		else{
+			document.getElementById(id).style.display = "none";
+		}
+	}
 	</script>
-
-	<table>
-		<tr>
-			<td>{#user#}:</td><td style="padding-left:10px;" ><a href="http://{$url$}/wiki/User:{$usernameurl$}">{$username$}</a></td>
-		</tr>
-		<tr>
-			<td>{#groups#}:</td><td style="padding-left:10px;" >{$groups$}</td>
-		</tr>
-		<tr>
-			<td>{#firstedit#}:</td><td style="padding-left:10px;" >{$firstedit$}</td>
-		</tr>
-	</table>
-	<br >
-	<table>
-		<tr>
-			<td  style="padding-top:10px;">{#unique#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$unique$}</span></td>
-		</tr>
-		<tr>
-			<td>{#average#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$average$}</span></td>
-		</tr>
-		<tr>
-			<td>{#reverted#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$reverted$}</span></td>
-		</tr>
-		<tr>
-			<td>{#live#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$live$}</span></td>
-		</tr>
-		<tr>
-			<td>{#deleted#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$deleted$}</span></td>
-		</tr>
-		<tr>
-			<td><b>{#total#}:</b>&nbsp;&nbsp;</td><td><span style="display:inline-block; width:50px;text-align:right;" ><b>{$total$}</b></span></td>
-		</tr>
-	</table>
+	<div style="text-align:center; font-weight:bold; " >
+			<span style="padding-right:10px;" >{#user#} &nbsp;&bull; </span>
+			<a style=" font-size:2em; " href="http://{$url$}/wiki/User:{$usernameurl$}">{$username$}</a>
+			<span style="padding-left:10px;" > &bull;&nbsp; {$url} </span>
+	</div>
+	<h3  style="margin-top:-0.8em;">{#generalstats#} &nbsp;&nbsp;<span style="font-size:75%;">[<a href="javascript:switchShow( \'generalstats\' )">show/hide</a>]</span></h3>
+	<div id = "generalstats">
+		<table>
+			<tr>
+				<td>{#groups#}:</td><td style="padding-left:10px;" >{$groups$}</td>
+			</tr>
+			<tr>
+				<td>{#firstedit#}:</td><td style="padding-left:10px;" >{$firstedit$}</td>
+			</tr>
+			<tr><td colspan=20 ></td></tr>
+			<tr>
+				<td>{#unique#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$unique$}</span></td>
+			</tr>
+			<tr>
+				<td>{#average#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$average$}</span></td>
+			</tr>
+			<tr><td colspan=20 ></td></tr>
+			<tr>
+				<td>{#pages_created#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$pages_created}</span></td>
+			</tr>
+			<tr>
+				<td>{#pages_moved#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$pages_moved}</span></td>
+			</tr>
+			<tr>
+				<td>{#reverted#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$reverted$}</span></td>
+			</tr>
+			<tr><td colspan=20 ></td></tr>
+			<tr>
+				<td>{#live#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$live$}</span></td>
+			</tr>
+			<tr>
+				<td>{#deleted_edits#}:</td><td><span style="display:inline-block; width:50px;text-align:right;" >{$deleted$}</span></td>
+			</tr>
+			<tr>
+				<td><b>{#total#}:</b>&nbsp;&nbsp;</td><td><span style="display:inline-block; width:50px;text-align:right;" ><b>{$total$}</b></span></td>
+			</tr>
+		</table>
+	</div>
 	<br />
 	<h3>{#namespacetotals#}</h3>
+	{$exp_color_table}
 	<table>
 		<tr>
 		<td>{$namespace_legend}</td>

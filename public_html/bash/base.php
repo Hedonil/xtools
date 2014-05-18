@@ -3,9 +3,8 @@
 class BashBase {
 
 	var $quotes;
-	var $api = false;
 
-	public function __construct( $api = false ) {
+	public function __construct() {
 		 
 		$pgHTTP = new HTTP();
 
@@ -20,7 +19,6 @@ class BashBase {
 		$text = preg_replace('/\n/', '<br />', $text);
 		
 		$this->quotes = explode("%<br />", $text);
-		$this->api = $api;
 
 	}
 	
@@ -65,28 +63,4 @@ class BashBase {
 		return $retArr;
 	}
 	
-	public function getPageForm( $lang="en", $wiki="wikipedia"){
-		global $I18N;
-	
-	$pageForm = '
-	<form action="?" method="get" accept-charset="utf-8">
-	<table class="wikitable">
-	<tr>
-		<td colspan="2"><input type="radio" name="action" value="random" checked="checked" />'.$I18N->msg('random').'</td>
-	</tr>
-	<tr>
-		<td colspan="2"><input type="radio" name="action" value="showall" />'.$I18N->msg('showall').'</td>
-	</tr>
-	<tr>
-		<td><input type="radio" name="action" value="search" />'.$I18N->msg('search').'<input type="text" name="search" /> <input type="checkbox" name="regex" />'.$I18N->msg('regex').'</td>
-	</tr>
-	<tr><td colspan="2"><input type="submit" value="'.$I18N->msg('submit').'" /></td></tr>
-	</table>
-	</form>
-	';
-
-	return $pageForm;
-	
-	}
-
 }

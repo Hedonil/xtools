@@ -34,6 +34,7 @@ class xGraph{
 		$chdata = array(
 				"cht" => "p",
 				"chs" => "250x250",
+				"chp" => '-1.55',
 				"chf" => "bg,s,00000000",
 				"chd" => "t:".implode(",", $pctdata),
 				"chl" => "", //implode("|", array_keys($data)),
@@ -56,7 +57,7 @@ class xGraph{
 			$values[] = $val;
 			$colors[] = str_replace("#", "", XtoolsTheme::GetColorList( $i ));
 			$i++;
-			if ($i == 8) break;
+			if ($i == 9) break;
 		}
 		$users[] = "others";
 		$colors[] = str_replace("#", "", XtoolsTheme::GetColorList( 100 ));
@@ -67,15 +68,68 @@ class xGraph{
 				"cht" => "p",
 				"chs" => "600x300",
 				"chf" => "bg,s,00000000",
-				"chp" => '-1.5',
+				"chp" => '-1.55',
 				"chd" => "t:".implode(",", $values),
 				"chdl" => implode("|", $users),
+				"chdls" => '737373,13',
 				'chdlp'=> 'r|l',
 				"chco" => implode("|", $colors)
 		
 		);
 		
 		return $chartbase.http_build_query($chdata);
+		#return self::makePieTest();
+	}
+	
+	function makePieTest(){
+		
+		$ff = XtoolsTheme::GetColorList();
+		$i=0;
+		$offset = 0;
+		foreach ($ff as $num => $color){
+			$i++;
+			if ($i < $offset ) {continue;}
+			$values[]=10;
+			$colors[] = str_replace("#", "", $color);
+			$legends[] = $num."-".str_replace("#", "", $color);
+			
+			if ( ($i-$offset) == 20) break;
+		}
+		
+		$chartbase = "//chart.googleapis.com/chart?";
+		$chdata = array(
+				"cht" => "p",
+				"chs" => "600x300",
+				"chf" => "bg,s,00000000",
+				"chp" => '-1.55',
+				"chd" => "t:".implode(",", $values),
+				"chdl" => implode("|", $legends),
+				"chdls" => '737373,13',
+				'chdlp'=> 'r|l',
+				"chco" => implode("|", $colors)
+		
+		);
+		
+		return $chartbase.http_build_query($chdata);
+	}
+	
+	static function makeColorTable(){
+		
+		$ff = XtoolsTheme::GetColorList();
+		$i=0;
+		$list ='<table>';
+		$tds ="";
+		foreach ($ff as $num => $color){
+			$i++;
+			$tds .= "<td style='min-width:250px; background-color:$color ' > </td><td>$num</td><td>$color</td>";
+			if ( $i % 3 == 0){
+				$list .= '<tr>'.$tds.'</tr>';
+				$tds ="";
+			}
+		}
+		$list .='</table>';
+		
+		return $list;
 	}
 	
 	static function makeArticleChartGoogle( $type, $data ){
@@ -177,8 +231,6 @@ class xGraph{
 		
 		return $filename;
 	}
-	
-
 	
 	static function makeLegendTable( &$data, &$namespaces ){
 		global $wt;
@@ -306,7 +358,7 @@ class xGraph{
 				$imsg .= '<td class="date" >'.$month.'</td><td>'.$month_total_edits[$month].'</td>';
 			}
 			else {
-				$msg .= '<td class="date" >'.$month.'</td><td>'. $wt->numFmt( $mtem ) .'</td>\n';
+				$msg .= '<td class="date" >'.$month.'</td><td>'. $wt->numFmt( $mtem ) .'</td>';
 				$imsg .= '<td class="date" >'.$month.'</td><td>'. $wt->numFmt( $mtem ) .'</td>';
 			}
 				
@@ -333,8 +385,8 @@ class xGraph{
 				$imsg .= "</div>";
 			}
 				
-			$msg .= "</td></tr>\n";
-			$imsg .= "</td></tr>\n";
+			$msg .= "</td></tr>";
+			$imsg .= "</td></tr>";
 		}
 	
 		$msg .= "</table>";
@@ -347,8 +399,9 @@ class xGraph{
 	
 	function getMonthPopup( $monthtotalsM, $month ) {
 		global $wgNamespaces; 
-	
+		
 		ksort($monthtotalsM);
+		$out = '';
 		foreach( $monthtotalsM as $ns_id => $count ) {
 			$sum = number_format( ( ( $count / array_sum( $monthtotalsM ) ) * 100 ), 2 );
 			$out .= $wgNamespaces['names'][$ns_id] . ": $count edits ($sum%) \n";
@@ -373,37 +426,47 @@ class XtoolsTheme extends Theme
 
 	function GetColorList( $num = false ) {
 		$colors = array(
-				0 => '#FF5555',
-				1 => '#55FF55',
-				2 => '#FFFF55',
-				3 => '#FF55FF',
-				4 => '#5555FF',
-				5 => '#55FFFF',
-				6 => '#C00000',
-				7 => '#0000C0',
-				8 => '#008800',
-				9 => '#00C0C0',
-				10 => '#FFAFAF',
-				11 => '#808080',
-				12 => '#00C000',
-				13 => '#404040',
-				14 => '#C0C000',
-				15 => '#C000C0',
-				100 => '#75A3D1',
-				101 => '#A679D2',
+				'0' => '#Cc0000',#'#FF005A', #red '#FF5555',
+				'1' => '#F7b7b7',
+				
+				'2' => '#5c8d20',#'#008800', #green'#55FF55',
+				'3' => '#85eD82',
+				
+				'4' => '#2E97E0', #blue
+				'5' => '#B9E3F9',
+
+				'6' => '#e1711d',  #orange
+				'7' => '#ffc04c',
+				
+				'#FDFF98', #yellow 
+				
+				'#5555FF',
+				'#55FFFF',
+				
+				'#0000C0',  # 
+				'#008800',  # green
+				'#00C0C0',
+				'#FFAFAF',	# rosé
+				'#808080',	# gray
+				'#00C000',
+				'#404040',
+				'#C0C000',	# green
+				'#C000C0',
+				100 => '#75A3D1',	# blue
+				101 => '#A679D2',	# purple
 				102 => '#660000',
 				103 => '#000066',
-				104 => '#FAFFAF',
+				104 => '#FAFFAF',	# caramel
 				105 => '#408345',
 				106 => '#5c8d20',
-				107 => '#e1711d',
-				108 => '#94ef2b',
-				109 => '#756a4a',
-				110 => '#6f1dab',
+				107 => '#e1711d',	# red
+				108 => '#94ef2b',	# light green
+				109 => '#756a4a',	# brown
+				110 => '#6f1dab',	
 				111 => '#301e30',
 				112 => '#5c9d96',
-				113 => '#a8cd8c',
-				114 => '#f2b3f1',
+				113 => '#a8cd8c',	# earth green
+				114 => '#f2b3f1',	# light purple
 				115 => '#9b5828',
 				118 => '#99FFFF',
 				119 => '#99BBFF',
@@ -424,8 +487,8 @@ class XtoolsTheme extends Theme
 				446 => '#06DCFB',
 				447 => '#892EE4',
 				460 => '#99FF66',
-				461 => '#99CC66',
-				470 => '#CCCC33',
+				461 => '#99CC66',	# green
+				470 => '#CCCC33',	# ocker
 				471 => '#CCFF33',
 				480 => '#6699FF',
 				481 => '#66FFFF',
@@ -439,6 +502,36 @@ class XtoolsTheme extends Theme
 				867 => '#FFCCFF',
 				1198 => '#FF34B3',
 				1199 => '#8B1C62',
+				
+				'#61a9f3',#blue
+				'#f381b9',#pink
+				'#61E3A9',
+				
+				'#D56DE2',
+				'#85eD82',
+				'#F7b7b7',
+				'#CFDF49',
+				'#88d8f2',
+				'#07AF7B',#green
+				'#B9E3F9',
+				'#FFF3AD',
+				'#EF606A',#red
+				'#EC8833',
+				'#FFF100',
+				'#87C9A5',
+				'#FFFB11',
+				'#005EBC',
+				'#9AEB67',
+				'#FF4A26',
+				'#FDFF98',
+				'#6B7EFF',
+				'#BCE02E',
+				'#E0642E',
+				'#E0D62E',
+				
+				'#02927F',
+				'#FF005A',
+				'#61a9f3', #blue' #FFFF55',
 		);
 		
 		if( $num === false ) {
@@ -447,7 +540,7 @@ class XtoolsTheme extends Theme
 		else{
 			return $colors[$num];
 		}
-
+		
 	}
 
 	function SetupGraph($graph) {

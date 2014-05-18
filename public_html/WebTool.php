@@ -94,7 +94,8 @@ class WebTool {
 		
 		if( in_array( 'showonlyerrors', $options ) ) { error_reporting(E_ERROR); }
 		
-		if( in_array( 'database', $options ) ) { $dbr = $this->loadDatabase( $lang, $wiki ); }
+		if( in_array( 'database', $options ) ) { $dbr = $this->loadDatabasePeachy( $lang, $wiki ); }
+		if( in_array( 'databaseCustom', $options ) ) { $dbr = $this->loadDatabaseCustom( $lang, $wiki ); }
 			
 		if( in_array( 'api', $options ) ) { $site = $this->loadPeachy( $url ); }
 
@@ -165,7 +166,7 @@ class WebTool {
 		}
 	}
 	
-	public function loadDatabase( $lang, $wiki) {
+	public function loadDatabasePeachy( $lang, $wiki) {
 		global $dbUser, $dbPwd;
 		
 		$this->loadDBCredentials();
@@ -182,6 +183,7 @@ class WebTool {
 		try {	
 			$dbr = new Database($server, $dbUser, $dbPwd, $dbname );
 			#$dbr->__call( 'set_charset' , 'utf8');
+			$dbr->classType = 'peachy';
 			$dbr->replagtime = $this->getReplag( $dbr );
 			
 			return $dbr;
@@ -190,6 +192,27 @@ class WebTool {
 			#$this->toDie( 'mysqlerror', $e->getMessage() );
 			return null;
 		}
+	}
+	
+	public function loadDatabaseCustom ( $lang, $wiki ){
+		global $dbUser, $dbPwd;
+		
+		$this->loadDBCredentials();
+		
+		if( $wiki = 'wikipedia' || $wiki = 'wikimedia' ) $wiki = "wiki";
+		$server = $lang.$wiki.".labsdb";
+		$dbname = $lang.$wiki."_p";
+		
+		if ($wiki == "wikidata") {
+			$server = 'wikidatawiki.labsdb';
+			$dbname = 'wikidatawiki_p';
+		}
+		
+		$mysqli = new mysqli( 'p:'.$server, $dbUser, $dbPwd, $dbname);
+		$mysqli->set_charset("utf8");
+		$mysqli->classType = 'custom';
+		
+		return $mysqli;
 	}
 
 	function getReplag( &$dbr ) {

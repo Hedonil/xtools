@@ -34,8 +34,11 @@ class Counter {
 	private $mUID;
 	private $mRegistration;
 	
+	private $mUnique;
 	private $mReverted;
 	private $mDeleted;
+	private $mMoved;
+	private $mCreated;
 	private $mLive;
 	private $mTotal;
 	private $mGroups;
@@ -46,9 +49,16 @@ class Counter {
 	private $mAveragePageEdits;
 	private $mAutoEdits;
 	
+	private $monthCountRecords;
+
+	private $logs;
+	private $revs;
+
+	private $perflog;
+	
 #	private $chMonthly;
 	
-	function __construct( $user, $wikibase ) {
+	function __construct( &$dbr, $user, $wikibase ) {
 		
 		$this->http = new HTTP();
 		$this->baseurl = 'http://'.$wikibase;
@@ -56,20 +66,24 @@ class Counter {
 		
 		$this->mName = $user;
 		$this->checkIP();
-		$this->checkExists();
-	}
-	
-	function analyze(){
-		
 		$this->getUserInfo();
 		
-		$this->getCounts();
-		$this->getRevertedEdits();
-	
-		$this->getStats();
+		if ( !$this->mExists ) return ;
 		
-		$this->fillMonthList();
+		
+		$this->fetchDeletedEdits( $dbr );
+		$this->fetchRevertedEdits( $dbr );
 
+
+		$this->fetchLogs($dbr);
+		$this->fetchRevisions( $dbr );
+
+		$this->parseRevisions();
+		
+#		$this->fillMonthList();
+#print_r($this);die;
+		global $perflog;
+		array_push( $perflog->stack, $this->perflog);
 	}
 
 	
@@ -82,125 +96,133 @@ class Counter {
 	}
 	
 	function getUserInfo(){
-
-		$data = array(
-			'action' => 'query',
-			'list' 	 => 'users',
-			'format' => 'json',
-			'usprop' => 'blockinfo|groups|implicitgroups|editcount|registration',
-			'ususers'=> $this->mName
-		);
-
-		$res = json_decode( $this->http->get( $this->apibase.http_build_query($data)) );
+		$pstart = microtime(true);
 		
-		if ( isset( $res->query->users[0]->userid) ){
-			$this->mUID = $res->query->users[0]->userid;
-			$this->mName = urldecode($res->query->users[0]->name);
-			$this->mGroups = $res->query->users[0]->groups;
-				unset($this->mGroups[ array_search("*", $this->mGroups) ]);
-			$this->mRegistration = $res->query->users[0]->registration;
-			$this->mExists = true;
-		}
-		else {
-			$this->mExists = false;
-		}
-
-	}
-		
-	function checkExists() {
-		global $perflog; $start = microtime(true);
-		global $dbr;
-	
 		if( $this->mIP ) {
 			$this->mExists = true;
 			$this->mUID = 0;
 		}
-		else {
+		else{
 			
-			$res = $dbr->query("Select user_id FROM user WHERE user_name = '".$dbr->strencode($this->mName)."' ");
-			$res = $res->endArray;
-
-			if( !count( $res ) ) {
-				$this->mExists = false;
-				$this->mUID = 0;
+			$data = array(
+				'action' => 'query',
+				'list' 	 => 'users',
+				'format' => 'json',
+				'usprop' => 'blockinfo|groups|implicitgroups|editcount|registration',
+				'ususers'=> $this->mName
+			);
+	
+			$res = json_decode( $this->http->get( $this->apibase.http_build_query($data)) );
+			
+			if ( isset( $res->query->users[0]->userid) ){
+				$this->mUID = $res->query->users[0]->userid;
+				$this->mName = urldecode($res->query->users[0]->name);
+				$this->mGroups = $res->query->users[0]->groups;
+					unset($this->mGroups[ array_search("*", $this->mGroups) ]);
+				$this->mRegistration = $res->query->users[0]->registration;
+				$this->mExists = true;
 			}
 			else {
-				$this->mExists = true;
-				$this->mUID = $res[0]['user_id'];
+				$this->mExists = false;
 			}
-			
-			unset($res);
 		}
-		$perflog->add(__FUNCTION__, microtime(true)-$start );
+		
+		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
+		
+	function fetchDeletedEdits( &$dbr ) {
+		$pstart = microtime(true);
+		
+		$where = ( $this->mIP ) ? "ar_user_text = '$this->mName' " : "ar_user = '$this->mUID' AND ar_timestamp > 1"; 
 
-	
-	function getCounts() {
-		global $perflog; $start = microtime(true);
-		global $dbr;
-		
-		if ( intval($this->mUID) != 0 && $this->mUID == intval($this->mUID ) ){
-			$res = $dbr->query("
-					SELECT 'arc' AS text, COUNT(*) AS count FROM archive_userindex WHERE ar_user = '$this->mUID' AND ar_timestamp > 1 
-					UNION
-					SELECT 'rev' AS text, COUNT(*) AS count FROM revision_userindex WHERE rev_user = '$this->mUID' AND rev_timestamp > 1 
-				");
-		}
-		elseif ($this->mIP ){
-			$res = $dbr->query("
-					SELECT 'arc' AS text, COUNT(*) AS count FROM archive_userindex WHERE ar_user_text = '$this->mName' 
-					UNION
-					SELECT 'rev' AS text, COUNT(*) AS count FROM revision_userindex WHERE rev_user_text = '$this->mName'
-				");
-		}
-		$res = $res->endArray;
-		
+		$res = $dbr->query("
+				SELECT COUNT(*) AS count 
+				FROM archive_userindex 
+				WHERE $where
+			"); 
 		$this->mDeleted = $res[0]['count'];
-		$this->mLive = $res[1]['count'];
 		
-		$this->mTotal = $this->mLive + $this->mDeleted;
-		
-		unset($res);
-		$perflog->add(__FUNCTION__, microtime(true)-$start );
+		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
 	
-	function getRevertedEdits() {
-		global $perflog; $start = microtime(true);
-		global $dbr;
+	function fetchRevertedEdits( &$dbr ) {
+		$pstart = microtime(true);
 
-		$res = $dbr->query("SELECT frp_user_params FROM flaggedrevs_promote where frp_user_id = '$this->mUID' ");
-		$res = $res->endArray;
+		if( $this->mIP ){
+			$this->mReverted = '–'; 
+			return; 
+		}
+		
+		$res = $dbr->query("
+				SELECT frp_user_params 
+				FROM flaggedrevs_promote 
+				WHERE frp_user_id = '$this->mUID' 
+			");
 		
 		if ( 1 === preg_match('/revertedEdits=([0-9]+)/', $res[0]['frp_user_params'], $capt)){
 			$this->mReverted = $capt[1];
 		}
 		
-		unset($res);
-		$perflog->add(__FUNCTION__, microtime(true)-$start );
+		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
 	
-	function getStats() {
-		global $perflog; $start = microtime(true);
-		global $dbr, $wgNamespaces;
+	function fetchLogs( &$dbr ){
+		$pstart = microtime(true);
 		
 		$res = $dbr->query("
-				SELECT rev_timestamp, UNIX_TIMESTAMP(rev_timestamp) as rev_timestamp2, page_title, page_namespace 
+					SELECT log_type, log_action
+					FROM logging_userindex
+					WHERE log_user in ('$this->mUID') AND log_timestamp > 1
+				");
+		
+		foreach ($res as $row){
+			$this->logs[ $row["log_type"] ][ $row["log_action"] ] += 1;
+		}
+	
+		$this->mMoved = $this->logs["move"]["move"];
+		
+		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
+	}
+
+
+
+//	
+// ****************************           old counter system           **********************
+//
+	function fetchRevisions( &$dbr ) {
+		$pstart = microtime(true);
+		
+		$this->revs = $dbr->query("
+				SELECT rev_timestamp, page_title, page_namespace, rev_comment, rev_parent_id
 				FROM revision_userindex 
 				JOIN page ON page_id = rev_page 
 				WHERE rev_user = '$this->mUID' AND rev_timestamp > 1
-				/*SLOW_OK RUN_LIMIT 60 NM*/ 
-				ORDER BY rev_timestamp ASC
 			");
-		$res = $res->endArray;
-		
-		$base_ns = array();
+	
+		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
+	}
 
-		foreach( $wgNamespaces['names'] as $id => $name ) {
-			$this->mNamespaceTotals[$id] = 0;
-			$base_ns[$id] = 0;
-		}
+	function parseRevisions(){
+		$pstart = microtime(true);
 		
-		foreach ( $res as $u => $row ) {
+// 		global $wgNamespaces;
+		
+// 		$base_ns = array();
+
+// 		foreach( $wgNamespaces['names'] as $id => $name ) {
+// 			$this->mNamespaceTotals[$id] = 0;
+// 			$base_ns[$id] = 0;
+// 		}
+	
+#		$knownrevs = array();
+		$this->mFirstEdit = '20991231999999';
+		foreach ( $this->revs as $u => $row ) {
+
+#			//check for duplicates (eg. filemover)
+#			$hash = hash( 'crc32', $row["rev_comment"].substr( $row["rev_comment"],0 , 11) );
+#			if ( in_array( $hash, $knownrevs ) ) { continue; }
+#			$knownrevs[] = $hash;
+
 			$this->mNamespaceTotals[ $row['page_namespace'] ]++;
 			
 			$timestamp = substr( $row['rev_timestamp'], 0, 4 ) . '/' . substr( $row['rev_timestamp'], 4, 2 );
@@ -211,8 +233,8 @@ class Counter {
 			
 			$this->mMonthTotals[$timestamp][ $row['page_namespace'] ]++;
 			
-			if( !$this->mFirstEdit ) {
-				$this->mFirstEdit = date('Y-m-d H:i:s', $row["rev_timestamp2"] );
+			if( $row["rev_timestamp"] < $this->mFirstEdit ) {
+				$this->mFirstEdit = $row["rev_timestamp"]; 
 			}
 			
 			if( !isset( $this->mUniqueArticles['namespace_specific'][$row['page_namespace']] ) ) {
@@ -226,13 +248,24 @@ class Counter {
 			}
 			$this->mUniqueArticles['namespace_specific'][$row['page_namespace']][$row['page_title']]++;
 			$this->mUniqueArticles['total'][$row['page_title']]++;
+			
+			if ( $row["rev_parent_id"] == 0 ) { $this->mCreated++ ; }
+			
+			$this->mLive++;
+			
+			unset( $this->revs[$u] );
 		}
 
+		$this->mFirstEdit = date('Y-m-d H:i:s', strtotime( $this->mFirstEdit ) );
+		$this->mUnique = count( $this->mUniqueArticles['total'] );
+		$this->mTotal = $this->mLive + $this->mDeleted;
+		
 		//print_r($this->mUniqueArticles);
 		
 		$this->mAveragePageEdits = number_format( ( $this->mTotal ? $this->mTotal / count( $this->mUniqueArticles['total'] ) : 0 ), 2 );
 		
-		//Well that sucked. This just fills the mMonthTotals array with all the months that have passed since the users last edit, if they haven't edited in over a month. Instead of appearing as though the user edited this month, it now is obvious they haven't edited in months
+		//Well that sucked. This just fills the mMonthTotals array with all the months that have passed since the users last edit, 
+		//if they haven't edited in over a month. Instead of appearing as though the user edited this month, it now is obvious they haven't edited in months
 		if( !isset( $this->mMonthTotals[date('Y/m')] ) ) {
 			//echo date('Y/m');
 			$month_totals = $this->mMonthTotals;
@@ -248,8 +281,9 @@ class Counter {
 		
 		ksort( $this->mNamespaceTotals);
 		
+		
 		unset($res);
-		$perflog->add(__FUNCTION__, microtime(true)-$start );
+		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
 	
 	
@@ -295,7 +329,7 @@ class Counter {
 	/**
 	 * Modul for standalone call from /autoedits
 	 */
-	public function calcAutoEditsDB( &$dbr, $begin, $end, $api = false ) {
+	static function calcAutoEditsDB( &$dbr, $begin, $end, $api = false ) {
 		global $perflog; $start = microtime(true);
 		
 		$AEBTypes = $this->getAEBTypes();
@@ -485,12 +519,24 @@ class Counter {
 		return $this->mUID;
 	}
 	
+	function getCreated() {
+		return $this->mCreated;
+	}
+	
+	function getUnique() {
+		return $this->mUnique;
+	}
+	
 	function getDeleted() {
 		return $this->mDeleted;
 	}
 	
 	function getReverted() {
 		return $this->mReverted;
+	}
+	
+	function getMoved() {
+		return $this->mMoved;
 	}
 	
 	function getLive() {

@@ -5,17 +5,17 @@
 	require_once( 'base.php' );
 
 //Load WebTool class
-	$wt = new WebTool( 'Bash', 'bash', array(  'database', 'smarty', 'sitenotice', 'replag') );
+	$wt = new WebTool( 'Bash', 'bash', array() );
 	$base = new BashBase();
-	$wt->content = $base->getPageForm();
+	$wt->content = getPageTemplate( 'form' );
 
 //Show form if &article parameter is not set (or empty)
-	if( !$wt->webRequest->getSafeVal( 'getBool', 'action' ) ) {
-		$wt->showPage($wt);
+	if( !$wgRequest->getVal( 'action' ) ) {
+		$wt->showPage();
 	}
 	
 
-	switch( $wt->webRequest->getSafeVal( 'action' ) ) {
+	switch( $wgRequest->getVal( 'action' ) ) {
 		case 'random':
 			$quote = $base->getRandomQuote();
 			
@@ -56,10 +56,37 @@
 			break;
 			
 		default:
-			$wt->showPage($wt);
+			$wt->showPage();
 	}
 
 unset($base, $quotes);
 $wt->content = $pageResult;
-$wt->showPage($wt);
+$wt->showPage();
 	
+
+/**************************************** templates ****************************************
+ *
+*/
+function getPageTemplate( $type ){
+
+	$templateForm = '
+			
+	<form action="?" method="get" accept-charset="utf-8">
+	<table class="wikitable">
+	<tr>
+	<td colspan="2"><input type="radio" name="action" value="random" checked="checked" />{#random#}</td>
+	</tr>
+	<tr>
+	<td colspan="2"><input type="radio" name="action" value="showall" />{#showall#}</td>
+	</tr>
+	<tr>
+	<td><input type="radio" name="action" value="search" />{#search#}<input type="text" name="search" /> <input type="checkbox" name="regex" />{#regex#}</td>
+	</tr>
+	<tr><td colspan="2"><input type="submit" value="{#submit#}" /></td></tr>
+	</table>
+	</form>
+	';
+	
+	if( $type == "form" ) { return $templateForm; }
+	if( $type == "result" ) { return $templateResult; }
+}

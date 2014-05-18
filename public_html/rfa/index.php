@@ -3,7 +3,7 @@
 //Requires
 	require_once( '../WebTool.php' );
 
-	$wt = new WebTool( 'RfX Analysis', 'rfa', array("smarty", "sitenotice", "replag") );
+	$wt = new WebTool( 'RfX Analysis', 'rfa', array( 'api' ) );
 	$wt->setMemLimit();
 
 	$pageForm = '
@@ -28,7 +28,7 @@
 		$wt->content = $pageForm;
 	}
 	$wt->content = "<div style='width:75%; margin-left:100px' >". $wt->content ."</div>";
-	$wt->showPage($wt);
+	$wt->showPage();
 
 
 

@@ -263,47 +263,36 @@ function getPageTemplate( $type ){
 	</script>
 	<div style="text-align:center; font-weight:bold; " >
 			<span style="padding-right:10px;" >{#page#} &nbsp;&bull; </span>
-			<a style=" font-size:2em; "href="//{$url}/wiki/{$urlencodedpage}">{$page}</a> 
+			<a style=" font-size:2em; " href="//{$url}/wiki/{$urlencodedpage}">{$page}</a> 
 			<span style="padding-left:10px;" > &bull;&nbsp; {$url} </span>
 	</div>
-	<h3  style="margin-top:0px;">{#generalstats#} &nbsp;&nbsp;<span style="font-size:75%;">[<a href="javascript:switchShow( \'generalstats\' )">show/hide</a>]</span></h3>
+	<h3  style="margin-top:-0.8em;">{#generalstats#} &nbsp;&nbsp;<span style="font-size:75%;">[<a href="javascript:switchShow( \'generalstats\' )">show/hide</a>]</span></h3>
 	<div id = "generalstats">
 	<table>
-	<tr><td style="vertical-align:top">
-		<table>
-			<tr><td>ID:</td><td><a href="//{$url}/w/index.php?title={$urlencodedpage}&action=info" >{$pageid}</a></td></tr>
-			<tr><td>Wikidata:</td><td>{$wikidata}</td></tr>
-			<tr><td>{#totaledits#}:</td><td>{$totaledits}</td></tr>
-			<tr><td>{#editorcount#}:</td><td>{$editorcount}</td></tr>
-			<tr><td colspan=20 ></td></tr>	
-			<tr><td>{#firstedit#}:</td><td>{$firstedit}</td></tr>
-			<tr><td>{#firstedit#} {#user#}:</td><td><a href="//{$url}/wiki/User:{$firstuser}" >{$firstuser}</a></td></tr>
-			<tr><td>{#lastedit#}:</td><td>{$lastedit}</td></tr>
-			<tr><td colspan=20 ></td></tr>	
-			<tr><td>{#minoredits#}:</td><td>{$minoredits} ({$minorpct}%)</td></tr>
-			<tr><td>{#anonedits#}:</td><td>{$anonedits} ({$anonpct}%)</td></tr>
-			<tr><td colspan=20 ></td></tr>	
-			<tr><td>{#timebwedits#}:</td><td>{$timebwedits} {#days#}</td></tr>
-			<tr><td>{#editspermonth#}:</td><td>{$editspermonth}</td></tr>
-			<tr><td>{#editsperyear#}:</td><td>{$editsperyear}</td></tr>
-			<tr><td colspan=20 ></td></tr>	
-			<tr style="border-top:1px solid silver;" ><td>{#lastday#}:</td><td>{$lastday}</td></tr>
-			<tr><td>{#lastweek#}:</td><td>{$lastweek}</td></tr>
-			<tr><td>{#lastmonth#}:</td><td>{$lastmonth}</td></tr>
-			<tr><td>{#lastyear#}:</td><td>{$lastyear}</td></tr>
-			<tr><td colspan=20 ></td></tr>		
-			<tr><td>{#editsperuser#}:</td><td>{$editsperuser}</td></tr>
-			<tr><td style="max-width:300px" >{#toptencount#}:&nbsp;&nbsp;&nbsp;</td><td>{$toptencount} ({$toptenpct}%)</td></tr>
-		</table>
-		</td>
-		<td style="vertical-align:top" >
-		<table>
-			<tr><td style="min-width:150px"></td><td></td>
-			<tr><td >{#totalauto#}:</td><td>{$totalauto}</td>
-			<tr><td></td><td>{$toolslist}</td>
-		</table>
-		</td>
-	</tr>
+		<tr><td>ID:</td><td><a href="//{$url}/w/index.php?title={$urlencodedpage}&action=info" >{$pageid}</a></td></tr>
+		<tr><td>Wikidata:</td><td>{$wikidata}</td></tr>
+		<tr><td>{#totaledits#}:</td><td>{$totaledits}</td></tr>
+		<tr><td>{#editorcount#}:</td><td>{$editorcount}</td></tr>
+		<tr><td colspan=20 ></td></tr>	
+		<tr><td>{#firstedit#}:</td><td>{$firstedit}</td></tr>
+		<tr><td>{#firstedit#} {#user#}:</td><td><a href="//{$url}/wiki/User:{$firstuser}" >{$firstuser}</a></td></tr>
+		<tr><td>{#lastedit#}:</td><td>{$lastedit}</td></tr>
+		<tr><td colspan=20 ></td></tr>	
+		<tr><td>{#minoredits#}:</td><td>{$minoredits} ({$minorpct}%)</td></tr>
+		<tr><td>{#anonedits#}:</td><td>{$anonedits} ({$anonpct}%)</td></tr>
+		<tr><td>{#autoedits#}:</td><td>{$autoedits} ({$autoeditspct}%)</td>
+		<tr><td colspan=20 ></td></tr>	
+		<tr><td>{#timebwedits#}:</td><td>{$timebwedits} {#days#}</td></tr>
+		<tr><td>{#editspermonth#}:</td><td>{$editspermonth}</td></tr>
+		<tr><td>{#editsperyear#}:</td><td>{$editsperyear}</td></tr>
+		<tr><td colspan=20 ></td></tr>	
+		<tr style="border-top:1px solid silver;" ><td>{#lastday#}:</td><td>{$lastday}</td></tr>
+		<tr><td>{#lastweek#}:</td><td>{$lastweek}</td></tr>
+		<tr><td>{#lastmonth#}:</td><td>{$lastmonth}</td></tr>
+		<tr><td>{#lastyear#}:</td><td>{$lastyear}</td></tr>
+		<tr><td colspan=20 ></td></tr>		
+		<tr><td>{#editsperuser#}:</td><td>{$editsperuser}</td></tr>
+		<tr><td>{#toptencount#}:&nbsp;&nbsp;&nbsp;</td><td>{$toptencount} ({$toptenpct}%)</td></tr>
 	</table>
 	</div>
 

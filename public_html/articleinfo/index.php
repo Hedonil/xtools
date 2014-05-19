@@ -8,8 +8,7 @@
 
 //Load WebTool class
 	$wt = new WebTool( 'ArticleInfo', 'articleinfo', array("database", "api") );
-	$wt->setMemLimit();
-	set_time_limit ( 60 );
+	$wt->setLimits();
 	
 	$wt->content = getPageTemplate( "form" );
 	$wt->assign("lang", "en");

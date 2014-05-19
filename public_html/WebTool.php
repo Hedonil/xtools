@@ -5,16 +5,6 @@ DEFINE('PEACHY_BASE_SYS_DIR', '/data/project/newwebtest' );
 DEFINE('XTOOLS_BASE_SYS_DIR', '/data/project/newwebtest' );
 DEFINE('XTOOLS_BASE_WEB_DIR', '//tools.wmflabs.org/newwebtest' );
 
-class Perflog {
-	public $stack = array();
-	
-	function add( $modul, $time ){
-		array_push( $this->stack, array("modul" => $modul, "time" => number_format($time*1000, 2) ));
-	}
-	function getOutput(){
-		echo "<pre>"; print_r($this->stack); echo "</pre>";
-	}
-}
 $perflog = new Perflog();
 
 // Incudes
@@ -22,7 +12,7 @@ $perflog = new Perflog();
 	require_once( PEACHY_BASE_SYS_DIR . '/Peachy/Init.php' );
 	echo "-->";
 	require_once( 'I18N.php' );
-	include( 'sitenotice.php' );
+
 
 /**
  * Main class for all xtools subtools
@@ -51,24 +41,24 @@ class WebTool {
 	public $executed;
 	public $memused;
 	
+	public $userinfo;
+	
 	public $uselang;
 	public $translate;
 	public $langLinks;
-	
-	public $webRequest;
 	
 	private $numberFormater;
 	private $dateFormater;
 	private $mOutput;
 
 	function __construct( $viewtitle = null, $configtitle = null, $options = array() ) {
-		global $wgRequest, $starttime, $startmem, $I18N, $sitenotice, $lang, $wiki, $url, $dbr, $site;
+		global $wgRequest, $I18N, $redis, $lang, $wiki, $url, $dbr, $site;
 		
 		//old style -> global object
 		$wgRequest = new WebRequest();
-		
-		$this->webRequest = &$wgRequest;
 		$this->getWikiInfo();
+		
+		$redis = $this->initRedis();
 		
 		$this->uselang = $wgRequest->getSafeVal( 'uselang', 'en');
 		$I18N->setLang( $this->uselang );
@@ -88,14 +78,10 @@ class WebTool {
 		mb_internal_encoding("utf-8"); 
 		header('content-type: text/html; charset: utf-8'); 
 		
-#		error_reporting(E_ALL|E_STRICT);
-#		ini_set("display_errors", 1);
-
 		
 		if( in_array( 'showonlyerrors', $options ) ) { error_reporting(E_ERROR); }
 		
-		if( in_array( 'database', $options ) ) { $dbr = $this->loadDatabasePeachy( $lang, $wiki ); }
-		if( in_array( 'databaseCustom', $options ) ) { $dbr = $this->loadDatabaseCustom( $lang, $wiki ); }
+		if( in_array( 'database', $options ) ) { $dbr = $this->loadDatabase( $lang, $wiki ); }
 			
 		if( in_array( 'api', $options ) ) { $site = $this->loadPeachy( $url ); }
 
@@ -104,43 +90,29 @@ class WebTool {
 // 			addStatV3( $toolname );
 // 		}
 		
-// 		$this->replagtime = $dbr->replagtime;
-// 		if ( $this->replagtime > 120 ){
-// 			$minutes = number_format( $this->replagtime / 60, 1);
-// 			$timemsg = $I18N->msg( 'minutes', array( "variables" => array($minutes)));
-// 			$this->replag = $I18N->msg('highreplag', array("variables" => array( $timemsg) ) );
-// 		}
-		
 	
 	}
 	
-   static function loadForApi( $toolname, $showonlyerrors = true, $db = true ) {
-      
-      mb_internal_encoding("utf-8"); 
-      header('content-type: text/html; charset: utf-8'); 
-
-      error_reporting(E_ALL|E_STRICT);
-      ini_set("display_errors", 1);
-      
-      if( $showonlyerrors ) { 
-         error_reporting(E_ERROR);
-      }
-      
-      define( 'WEBTOOL_API_TRUE', 1 );
-      
-      if( !$db ) return;
-      
-      $this->loadDatabase();
-      
-#			require_once( '/data/project/xtools/stats.php' );
-#			addStatV3( $toolname );
-      
-      $this->loadPeachy();
-      
-   }
+	function getUserInfo( $lang=null, $wiki=null, $user=null){
+		global $wgRequest;
+		
+		$uio = new stdClass(
+				$username = null,
+				$usernameUrlEnc = null,
+				$isIP = false,
+				$userid = null
+			);
+		
+		$username = ( !$user ) ? $wgRequest->getVal('user') : $user ;
+		$username = ( !$username ) ? $wgRequest->getVal( 'name' ) : $username;
+		
+		$uio->isIP = ( long2ip( ip2long( $username ) ) == $username ) ? true : false;
+		
+	}
    
-	function setMemLimit( $mb = 512 ) {
+	function setLimits( $mb = 512, $time = 30 ) {
 		ini_set("memory_limit", $mb . 'M' );
+		set_time_limit ( $time );
 	}
    
 	public function loadPeachy( $url ) {
@@ -166,7 +138,7 @@ class WebTool {
 		}
 	}
 	
-	public function loadDatabasePeachy( $lang, $wiki) {
+	public function loadDatabase( $lang, $wiki) {
 		global $dbUser, $dbPwd;
 		
 		$this->loadDBCredentials();
@@ -181,10 +153,9 @@ class WebTool {
 		}
 
 		try {	
-			$dbr = new Database($server, $dbUser, $dbPwd, $dbname );
-			#$dbr->__call( 'set_charset' , 'utf8');
+			$dbr = new Database2( $server, $dbUser, $dbPwd, $dbname );
 			$dbr->classType = 'peachy';
-			$dbr->replagtime = $this->getReplag( $dbr );
+#			$dbr->replagtime = $this->getReplag( $dbr );
 			
 			return $dbr;
 		} 
@@ -194,27 +165,6 @@ class WebTool {
 		}
 	}
 	
-	public function loadDatabaseCustom ( $lang, $wiki ){
-		global $dbUser, $dbPwd;
-		
-		$this->loadDBCredentials();
-		
-		if( $wiki = 'wikipedia' || $wiki = 'wikimedia' ) $wiki = "wiki";
-		$server = $lang.$wiki.".labsdb";
-		$dbname = $lang.$wiki."_p";
-		
-		if ($wiki == "wikidata") {
-			$server = 'wikidatawiki.labsdb';
-			$dbname = 'wikidatawiki_p';
-		}
-		
-		$mysqli = new mysqli( 'p:'.$server, $dbUser, $dbPwd, $dbname);
-		$mysqli->set_charset("utf8");
-		$mysqli->classType = 'custom';
-		
-		return $mysqli;
-	}
-
 	function getReplag( &$dbr ) {
 
 		$res = $dbr->query("
@@ -290,7 +240,22 @@ class WebTool {
 		return strpos( $haystack, $needle ) !== false;
 	}
 	
+	function initRedis(){
 		
+		$redis = new Redis();
+		if ($redis->connect('tools-redis', 6379)){
+			$enableCache = true;
+			try {
+				$redis->info("server");
+			}
+			catch (Exception $e){
+				$redis = null;
+			}
+		}
+		
+		return $redis;
+	}
+	
 	/**
 	 * Loads Intuition I18N object. Replaces {#these#} with the messages.
 	 * @param object $I18N - defined in class I18N
@@ -363,3 +328,175 @@ class WebTool {
 
 }
 
+class Database2{
+	
+	public $dbo;
+	public $dbotype;
+	
+	private $server;
+	private $database;
+	
+	function __construct( $server, $dbUser, $dbPassword, $database, $persistant=false ){
+		
+		$p = ($persistant) ? "p:" : "";
+		
+		$this->dbo = new mysqli( $server, $dbUser, $dbPassword, $database);
+		$this->dbo->set_charset("utf8");
+		
+		$this->dbotype = 'custom';
+		$this->server = $server;
+		$this->database = $database;
+	}
+	
+	function query( $queryString ) {
+		
+		$mysqli = &$this->dbo;
+		$retArr = null;
+		
+		if ( $result = $mysqli->query( $queryString ) ){
+			
+			$fields = $result->fetch_fields();
+#print_r($fields);
+			while( $row = $result->fetch_assoc() ){
+				
+				$wrapper = array();
+				foreach ($fields as $field ){
+					//check if type is interger
+					if ( $field->type == 3 ) {
+						$wrapper[ $field->name ] = (int)$row[ $field->name ];
+					}
+					else {
+						$wrapper[ $field->name ] = $row[ $field->name ];
+					}
+				}
+				
+				$retArr[] = $wrapper;
+			}
+			$result->close();
+		}
+
+		return $retArr;
+	}
+	
+	function close(){
+		$this->dbo->close();
+	}
+	function strencode( $String ){
+		return $this->dbo->real_escape_string( $String );
+	}
+	
+	function multiquery( $queries ){
+		global $redis;
+		
+		if ($redis){
+			$sqlapi = "http://tools-webproxy/tools-info/sqlapi/api.php?";
+			
+			//Get the separate queries
+			foreach ( $queries as $i => $query ){
+				
+				$server = $this->server;
+				$database = $this->database;
+				
+				if ( $query["src"] != "this" ){
+					$server = $query["src"].".labsdb";
+					$database = $query["src"]."_p";
+				}
+					
+				$data = array(
+						"token" => hash( "crc32", $query["query"]),
+						"server" => $server,
+						"database" => $database,
+						"query" => $query["query"],
+					);
+				$request[] = $sqlapi.http_build_query($data);
+			}
+			
+			$apiresults = $this->multicurl($request);
+#print_r($apiresults); 			
+			//Get the results from redis
+			$error = false;
+			foreach ($apiresults as $i=> $apiresult ){
+				$obj = json_decode( $apiresult, false);
+#				if ( !is_object($obj) || $obj->length == 0 ) { $error = true; break; }
+				
+				$result[$i] = json_decode( $redis->get( $obj->rediskey ), true ); 
+				
+			}
+			
+#			if ( !$error ){
+				return $result;
+#			}
+			
+		}
+		
+	}
+	
+	function multicurl( $urlArr, $method="GET", $request=null ){
+
+		global $version;
+		$res	= null;
+		$err 	= null;
+	
+		if ( !is_array($urlArr) ) { $urlArr = array($urlArr); }
+	
+		//create multiple cUrl handler
+		$mh = curl_multi_init();
+	
+		foreach ( $urlArr as $i => $url ) {
+			$ch[$i] = curl_init();
+			curl_setopt($ch[$i], CURLOPT_USERAGENT, 'WikiViewStats/'.$version.' (https://tools.wmflabs.org/wikiviewstats/; Hedonil)');
+			curl_setopt($ch[$i], CURLOPT_RETURNTRANSFER, true);
+			curl_setopt($ch[$i], CURLOPT_URL, $url);
+			//echo curl_getinfo($handle, CURLINFO_HTTP_CODE);
+	
+			if ( $method == "POST") {
+				curl_setopt( $ch[$i], CURLOPT_POST, true );
+				curl_setopt( $ch[$i], CURLOPT_POSTFIELDS, http_build_query( $request ) );
+				//curl_setopt( $ch, CURLOPT_SSL_VERIFYPEER, false );
+			}
+			curl_multi_add_handle($mh, $ch[$i]);
+		}
+	
+		$active = null;
+		// execute the handles
+		do {
+			$mrc = curl_multi_exec($mh, $active);
+		} while ($mrc == CURLM_CALL_MULTI_PERFORM);
+	
+		//check for results and execute until everything is done
+		while ($active && $mrc == CURLM_OK) {
+			if (curl_multi_select($mh) == -1) {
+				usleep(50);
+			}
+			do {
+				$mrc = curl_multi_exec($mh, $active);
+			} while ($mrc == CURLM_CALL_MULTI_PERFORM);
+		}
+	
+		//fetch the results
+		foreach ($urlArr as $i => $url ) {
+			$res[$i] = curl_multi_getcontent($ch[$i]);
+			curl_close($ch[$i]);
+		}
+	
+		#	$err = curl_error($mh);
+		curl_multi_close($mh);
+		$mh = null;
+	
+		if (count($res) == 1) { $res = $res[0]; }
+	
+
+		return $res;
+	}
+}
+
+class Perflog {
+	public $stack = array();
+
+	function add( $modul, $time ){
+		array_push( $this->stack, array("modul" => $modul, "time" => number_format($time*1000, 2) ));
+	}
+	function getOutput(){
+		echo "<pre>"; print_r($this->stack); echo "</pre>";
+	}
+}

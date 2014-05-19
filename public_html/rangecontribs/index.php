@@ -6,7 +6,7 @@
 
 //Load WebTool class
 	$wt = new WebTool( 'Range contributions', 'rangecontribs', array("smarty", "sitenotice", "replag") );
-	$wt->setMemLimit();
+	$wt->setLimits();
 	$base = new RangecontribsBase();
 	$wt->content = getPageTemplate( "form" );
 	$wt->assign("lang", "en");

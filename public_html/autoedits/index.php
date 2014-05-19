@@ -6,19 +6,19 @@
 
 //Load WebTool class
 	$wt = new WebTool( 'AutoEdits', 'autoedits', array("database") );
-	$wt->setMemLimit();
+	$wt->setLimits();
 	 
 	$wt->content = getPageTemplate( "form" );
 	$wt->assign( 'lang', 'en');
 	$wt->assign( 'wiki', 'wikipedia');
 
 
-	$user = $wt->prettyTitle( $wgRequest->getSafeVal( 'user' ), true );
-	$lang = $wt->webRequest->getSafeVal( 'lang' );
-	$wiki = $wt->webRequest->getSafeVal( 'wiki' );
+	$user = $wgRequest->getVal( 'user' );
+	$lang = $wgRequest->getVal( 'lang' );
+	$wiki = $wgRequest->getVal( 'wiki' );
 	$wikibase = $lang.".".$wiki;
-	$begin = $wt->webRequest->getSafeVal( 'begin' );
-	$end = $wt->webRequest->getSafeVal( 'end' );
+	$begin = $wgRequest->getVal( 'begin' );
+	$end = $wgRequest->getVal( 'end' );
 
 //Show form if &article parameter is not set (or empty)
 	if( !$lang || !$wiki || !$user ) {

@@ -27,7 +27,7 @@ class PagesBase{
 			SELECT DISTINCT page_namespace, page_title, page_is_redirect, page_id, UNIX_TIMESTAMP(rev_timestamp) as timestamp
 			FROM page
 			JOIN revision_userindex on page_id = rev_page
-			WHERE rev_user = '$user_id' AND rev_parent_id = '0'  $namespaceCondition  $redirectCondition
+			WHERE rev_user = '$user_id' AND rev_timestamp > 1 AND rev_parent_id = '0'  $namespaceCondition  $redirectCondition
 			ORDER BY page_namespace ASC, rev_timestamp DESC;
 		";
 		

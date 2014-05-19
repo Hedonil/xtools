@@ -4,7 +4,7 @@
 	require_once( '../WebTool.php' );
 
 	$wt = new WebTool( 'RfX Analysis', 'rfa', array( 'api' ) );
-	$wt->setMemLimit();
+	$wt->setLimits();
 
 	$pageForm = '
 		<h1>RfA Analysis</h1>

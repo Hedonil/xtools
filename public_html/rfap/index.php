@@ -6,7 +6,7 @@
 
 //Load WebTool class
 	$wt = new WebTool( 'RfX Vote', 'rfap', array( "database", "api" ) );
-	$wt->setMemLimit();
+	$wt->setLimits();
 
 	$wt->content = getPageTemplate( 'form' );
 	$wt->assign("lang", "en");

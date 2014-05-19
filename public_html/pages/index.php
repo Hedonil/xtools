@@ -5,7 +5,7 @@
 	require_once( 'base.php' );
 	
 //Load WebTool class
-	$wt = new WebTool( 'Pages', 'pages', array("database") );
+	$wt = new WebTool( 'Pages', 'pages', array( "database", "api") );
 	$wt->setMemLimit();
 	
 	$base = new PagesBase();
@@ -13,16 +13,20 @@
 	$wt->assign("lang", "en");
 	$wt->assign("wiki", "wikipedia");
 	
-	$user = $wgRequest->getVal('user');
-	$user = $wgRequest->getBool( 'name' ) ? $wgRequest->getVal( 'name' ) : $user;
+	$username = $wgRequest->getVal('user');
+	$username = $wgRequest->getBool( 'name' ) ? $wgRequest->getVal( 'name' ) : $username;
 
 //Show form if &article parameter is not set (or empty)
-	if( !$user ) {
+	if( !$username ) {
 		$wt->showPage();
 	}
 
 //Get username & userid, quit if not exist
 	$userData = $base->getUserData( $dbr, $user );
+	$userobj = new User( $site, $username );
+print_r($userobj);
+	$username = $userobj->get_username();
+	
 	if( !$userData ) { 
 		$wt->error = $I18N->msg("No such user");
 		$wt->showPage();
@@ -131,7 +135,7 @@ function getPageTemplate( $type ){
 		</tr>
 	</table>
 	
-	<table class="sortable" >
+	<table>
 		{$resultDetails}
 	</table>
 	';

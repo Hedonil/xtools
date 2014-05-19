@@ -76,7 +76,6 @@ class ArticleInfo {
 	function fetchHistoryRecordsDB( &$dbr ) {
 		$pstart = microtime(true);
 		
-		$conds = array( 'rev_page = ' . $this->pageid );
 		$start = $end = false;
 	
 		if( $this->begin ) {
@@ -87,19 +86,18 @@ class ArticleInfo {
 		}
 	
 		try {
-			$res = $dbr->select(
-					array( 'revision_userindex' ),
-					array( 'rev_user_text', 'rev_user', 'rev_timestamp', 'rev_comment', 'rev_minor_edit', 'rev_len' ),
-					$conds,
-					array( 'LIMIT' => 200000 )
-			);
+			$this->history = $dbr->query("
+						SELECT rev_user_text, rev_user, rev_timestamp, rev_comment, rev_minor_edit, rev_len
+						FROM revision_userindex
+						WHERE rev_page = '$this->pageid' AND rev_timestamp > 1 
+						LIMIT 20000
+					");
 		} catch( Exception $e ) {
 			$this->error = $e->getMessage();
 			return;
 		}
-	
-		$this->history = $res;
-		$this->historyCount = count($res);	
+
+		$this->historyCount = count( $this->history );	
 		
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
@@ -114,13 +112,12 @@ class ArticleInfo {
 				WHERE log_namespace = '$this->namespace' AND log_title = '$title' AND log_timestamp > 1
 					AND log_type in ('delete', 'move', 'protect')	
 			";
-		$res = $dbr->query ( $query );
+		$this->tmpLogs = $dbr->query ( $query );
 		
-		$this->tmpLogs = $res->endArray;
 		
-		unset($res);
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
+	
 	function fetchLogRecordsApi( $site ){
 		#$logsi = $site->logs( null, false, $this->pagetitle, strtotime( $this->begin ), strtotime( $this->end ), 'older', false, array( 'type', 'timestamp', 'user', 'details' ) );
 	}
@@ -137,7 +134,6 @@ class ArticleInfo {
 				
 		try{
 			$dbwikidata = new Database( "wikidatawiki.labsdb", $dbUser, $dbPwd, "wikidatawiki_p");
-			$dbwikidata->set_type("mysqli");
 			
 			$query = "
 					SELECT ips_site_id, ips_site_page 

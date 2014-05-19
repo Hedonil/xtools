@@ -28,75 +28,87 @@ class Counter {
 	public $apibase;
 	public $http;
 	
-	private $mName;
 	private $mIP;
 	private $mExists;
-	private $mUID;
-	private $mRegistration;
 	
-	private $mUnique;
-	private $mReverted;
-	private $mDeleted;
-	private $mMoved;
-	private $mCreated;
-	private $mLive;
-	private $mTotal;
-	private $mGroups;
+	public $mUID;
+	public $mName;
+	public $mRegistration;
+	public $mGroups;
+	public $mGroupsGlobal;
+	public $mHomeWiki;
+	public $mRegisteredWikis;
+
+	public $mFirstEdit;
+	public $mLatestEdit;
+	
+	public $mUnique;
+	public $mReverted;
+	public $mDeleted;
+	public $mAutoEdits;
+	public $mUploaded;
+	public $mUploadedCommons;
+	
+	public $mMoved;
+	public $mApprove;
+	public $mUnapprove;
+	public $mThanked;
+	public $mPatrol;
+	public $mBlock;
+	public $mUnblock;
+	public $mProtect;
+	public $mUnprotect;
+	public $mDeletePage;
+	public $mDeleteRev;
+	
+	public $mCreated;
+	public $mLive;
+	public $mTotal;
+	public $mTotalGlobal;
+	public $mAveragePageEdits;
+	
 	private $mMonthTotals = array();
 	private $mNamespaceTotals = array();
 	private $mUniqueArticles = array( 'total', 'namespace_specific' );
-	private $mFirstEdit;
-	private $mAveragePageEdits;
-	private $mAutoEdits;
 	
-	private $monthCountRecords;
+	public $mAutoEditTools = array();
 
-	private $logs;
-	private $revs;
+	private $logs = array();
+	private $revs = array();
+	public $wikis = array();
 
 	private $perflog;
 	
-#	private $chMonthly;
 	
-	function __construct( &$dbr, $user, $wikibase ) {
+	function __construct( &$dbr, $user, $wikibase, $noautorun=false ) {
 		
 		$this->http = new HTTP();
 		$this->baseurl = 'http://'.$wikibase;
 		$this->apibase = $this->baseurl.'/w/api.php?';
 		
 		$this->mName = $user;
-		$this->checkIP();
+		
 		$this->getUserInfo();
 		
-		if ( !$this->mExists ) return ;
+		if ( !$this->mExists || $noautorun ) return ;
 		
+		$this->fetchData($dbr);
 		
-		$this->fetchDeletedEdits( $dbr );
-		$this->fetchRevertedEdits( $dbr );
-
-
-		$this->fetchLogs($dbr);
-		$this->fetchRevisions( $dbr );
-
 		$this->parseRevisions();
+		$this->parseLogs();
 		
 #		$this->fillMonthList();
+
 #print_r($this);die;
 		global $perflog;
 		array_push( $perflog->stack, $this->perflog);
 	}
 
 	
-	function checkIP() {
-		$this->mIP = ( long2ip( ip2long( $this->mName ) ) == $this->mName ) ? true : false;
-	}
-	
-	function getGlobalUserInfo(){
-		$query = "/w/api.php?action=query&meta=globaluserinfo&format=json&guiuser=Hedonil&guiprop=groups%7Crights%7Cmerged%7Cunattached%7Ceditcount";
-	}
-	
 	function getUserInfo(){
 		$pstart = microtime(true);
+		
+		$this->mIP = ( long2ip( ip2long( $this->mName ) ) == $this->mName ) ? true : false;
 		
 		if( $this->mIP ) {
 			$this->mExists = true;
@@ -104,104 +116,186 @@ class Counter {
 		}
 		else{
 			
+			//Get lokal user info
 			$data = array(
-				'action' => 'query',
-				'list' 	 => 'users',
-				'format' => 'json',
-				'usprop' => 'blockinfo|groups|implicitgroups|editcount|registration',
-				'ususers'=> $this->mName
-			);
+					'action' => 'query',
+					'list' 	 => 'users',
+					'format' => 'json',
+					'usprop' => 'blockinfo|groups|implicitgroups|editcount|registration',
+					'ususers'=> $this->mName
+				);
 	
 			$res = json_decode( $this->http->get( $this->apibase.http_build_query($data)) );
+			$res = $res->query->users[0];
 			
-			if ( isset( $res->query->users[0]->userid) ){
-				$this->mUID = $res->query->users[0]->userid;
-				$this->mName = urldecode($res->query->users[0]->name);
-				$this->mGroups = $res->query->users[0]->groups;
+			if ( isset( $res->userid) ){
+				$this->mUID = $res->userid;
+				$this->mName = urldecode($res->name);
+				$this->mGroups = $res->groups;
 					unset($this->mGroups[ array_search("*", $this->mGroups) ]);
-				$this->mRegistration = $res->query->users[0]->registration;
+				$this->mRegistration = $res->registration;
 				$this->mExists = true;
 			}
 			else {
 				$this->mExists = false;
 			}
+			unset($res);
+			
+			
+			//Get global user info
+			$data = array(
+					'action' => 'query',
+					'meta' => 'globaluserinfo',
+					'format' => 'json',
+					'guiprop' => 'groups|rights|merged|unattached|editcount',
+					'guiuser' => $this->mName,
+				);
+			
+			$res = json_decode( $this->http->get( $this->apibase.http_build_query($data)) );
+			$res = $res->query->globaluserinfo;
+			
+			if ( isset( $res->id) ){
+				$this->mGroupsGlobal = $res->groups;
+				$this->mHomeWiki = $res->home;
+				
+				foreach ( $res->merged as $wiki ){
+					$this->wikis[ $wiki->url ] = $wiki->editcount;
+				}
+				arsort($this->wikis);
+				unset($res);
+				
+				$this->mRegisteredWikis = count($this->wikis);
+				$this->mTotalGlobal = array_sum($this->wikis);
+#print_r($this->wikis);
+			}
 		}
 		
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
-		
-	function fetchDeletedEdits( &$dbr ) {
-		$pstart = microtime(true);
-		
-		$where = ( $this->mIP ) ? "ar_user_text = '$this->mName' " : "ar_user = '$this->mUID' AND ar_timestamp > 1"; 
 
-		$res = $dbr->query("
-				SELECT COUNT(*) AS count 
-				FROM archive_userindex 
-				WHERE $where
-			"); 
-		$this->mDeleted = $res[0]['count'];
-		
-		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
-	}
-	
-	function fetchRevertedEdits( &$dbr ) {
-		$pstart = microtime(true);
+//
+// ****************************           fetch data          **********************
+//	
 
-		if( $this->mIP ){
-			$this->mReverted = '–'; 
-			return; 
-		}
-		
-		$res = $dbr->query("
-				SELECT frp_user_params 
-				FROM flaggedrevs_promote 
-				WHERE frp_user_id = '$this->mUID' 
-			");
-		
-		if ( 1 === preg_match('/revertedEdits=([0-9]+)/', $res[0]['frp_user_params'], $capt)){
-			$this->mReverted = $capt[1];
-		}
-		
-		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
-	}
-	
-	function fetchLogs( &$dbr ){
+
+	function fetchData ( &$dbr ){
 		$pstart = microtime(true);
 		
-		$res = $dbr->query("
+		$where = ( $this->mIP ) ? "rev_user_text = '$this->mName' " : "rev_user = '$this->mUID' AND rev_timestamp > 1";
+		$query[] = array(
+				"type" => "db",
+				"src" => "this",
+				"query" => "
+					SELECT rev_timestamp, page_title, page_namespace, rev_comment, rev_parent_id
+					FROM revision_userindex 
+					JOIN page ON page_id = rev_page 
+					WHERE $where
+				"
+			);
+		
+		$where = ( $this->mIP ) ? "log_user_text = '$this->mName' " : "log_user = '$this->mUID' AND log_timestamp > 1";
+		$query[] = array(
+				"type" => "db",
+				"src" => "this",
+				"query" => "
 					SELECT log_type, log_action
 					FROM logging_userindex
-					WHERE log_user in ('$this->mUID') AND log_timestamp > 1
-				");
+					WHERE $where
+				"
+			);
+
+		$where = ( $this->mIP ) ? "ar_user_text = '$this->mName' " : "ar_user = '$this->mUID' AND ar_timestamp > 1";
+		$query[] = array(
+				"type" => "db",
+				"src" => "this",
+				"query" => "
+					SELECT COUNT(*) AS count
+					FROM archive_userindex
+					WHERE $where
+				"
+			);
 		
-		foreach ($res as $row){
-			$this->logs[ $row["log_type"] ][ $row["log_action"] ] += 1;
-		}
-	
-		$this->mMoved = $this->logs["move"]["move"];
+		$where = ( $this->mIP ) ? "frp_user_id = '999999999' " : "frp_user_id = '$this->mUID' ";
+		$query[] = array(
+				"type" => "db",
+				"src" => "this",
+				"query" => "
+					SELECT frp_user_params 
+					FROM flaggedrevs_promote 
+					WHERE $where 
+				"
+			);
 		
+		$where = ( $this->mIP ) ? "username = '**999999999' " : "user_name= '".$dbr->strencode($this->mName)."' ";
+		$query[] = array(
+				"type" => "db",
+				"src" => "commonswiki",
+				"query" => "
+					SELECT count(log_type) as count 
+					FROM logging_userindex  
+					JOIN user on user_id = log_user  
+					WHERE log_type = 'upload' AND $where
+				"
+			);
+		
+		$ff = $dbr->multiquery( $query );
+		
+		$this->revs = $ff[0];
+		$this->logs = $ff[1];
+		$this->mDeleted = $ff[2][0]["count"];
+		if ( 1 === preg_match('/revertedEdits=([0-9]+)/', $ff[3][0]['frp_user_params'], $capt)){ $this->mReverted = $capt[1]; }
+		$this->mUploadedCommons = $ff[4][0]["count"];
+#print_r($ff[1]);
+
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
-
-
-
-//	
-// ****************************           old counter system           **********************
-//
-	function fetchRevisions( &$dbr ) {
+	
+	function parseLogs(){
 		$pstart = microtime(true);
 		
-		$this->revs = $dbr->query("
-				SELECT rev_timestamp, page_title, page_namespace, rev_comment, rev_parent_id
-				FROM revision_userindex 
-				JOIN page ON page_id = rev_page 
-				WHERE rev_user = '$this->mUID' AND rev_timestamp > 1
-			");
-	
+		foreach ($this->logs as $log ){
+			
+			if ( $log["log_type"] == "move"){
+				$this->mMoved++;
+			}
+			if ( $log["log_type"] == "upload"){
+				$this->mUploaded++;
+			}
+			if ( $log["log_type"] == "review" && $log["log_action"] == "approve" ){
+				$this->mApprove++;
+			}
+			if ( $log["log_type"] == "review" && $log["log_action"] == "unapprove" ){
+				$this->mUnapprove++;
+			}
+			if ( $log["log_type"] == "thanks" && $log["log_action"] == "thank" ){
+				$this->mThanked++;
+			}
+			if ( $log["log_type"] == "patrol" && $log["log_action"] == "patrol" ){
+				$this->mPatrol++;
+			}
+			if ( $log["log_type"] == "block" && $log["log_action"] == "block" ){
+				$this->mBlock++;
+			}
+			if ( $log["log_type"] == "block" && $log["log_action"] == "unblock" ){
+				$this->mUnblock++;
+			}
+			if ( $log["log_type"] == "protect" && $log["log_action"] == "protect" ){
+				$this->mProtect++;
+			}
+			if ( $log["log_type"] == "protect" && $log["log_action"] == "unprotect" ){
+				$this->mUnprotect++;
+			}
+			if ( $log["log_type"] == "delete" && $log["log_action"] == "delete" ){
+				$this->mDeletePage++;
+			}
+			if ( $log["log_type"] == "delete" && $log["log_action"] == "revision" ){
+				$this->mDeleteRev++;
+			}
+		}
+		
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
-
+	
 	function parseRevisions(){
 		$pstart = microtime(true);
 		
@@ -215,7 +309,9 @@ class Counter {
 // 		}
 	
 #		$knownrevs = array();
-		$this->mFirstEdit = '20991231999999';
+
+		$this->mFirstEdit  = '20991231999999';
+		$this->mLatestEdit = '00000000000000';
 		foreach ( $this->revs as $u => $row ) {
 
 #			//check for duplicates (eg. filemover)
@@ -236,6 +332,10 @@ class Counter {
 			if( $row["rev_timestamp"] < $this->mFirstEdit ) {
 				$this->mFirstEdit = $row["rev_timestamp"]; 
 			}
+			if( $row["rev_timestamp"] > $this->mLatestEdit ) {
+				$this->mLatestEdit = $row["rev_timestamp"];
+			}
+				
 			
 			if( !isset( $this->mUniqueArticles['namespace_specific'][$row['page_namespace']] ) ) {
 				$this->mUniqueArticles['namespace_specific'][$row['page_namespace']] = array();
@@ -250,6 +350,14 @@ class Counter {
 			$this->mUniqueArticles['total'][$row['page_title']]++;
 			
 			if ( $row["rev_parent_id"] == 0 ) { $this->mCreated++ ; }
+			
+			foreach ( $this->AEBTypes as $tool => $signature ){
+				if ( preg_match( $signature["regex"], $row['rev_comment']) ){
+					$this->mAutoEdits++;
+					$this->mAutoEditTools[$tool]++;
+					break;
+				}
+			}
 			
 			$this->mLive++;
 			
@@ -539,6 +647,18 @@ class Counter {
 		return $this->mMoved;
 	}
 	
+	function getApproved() {
+		return $this->mApproved;
+	}
+	
+	function getThanked() {
+		return $this->mThanked;
+	}
+	
+	function getPatroled() {
+		return $this->mPatroled;
+	}
+	
 	function getLive() {
 		return $this->mLive;
 	}
@@ -566,17 +686,18 @@ class Counter {
 		return $this->mAutoEdits;
 	}
 	
-	static function getAEBTypes(){
-		
-		$AEBTypes = array(
+			
+	public $AEBTypes = array(
 				'Huggle' => array(
+						'url' => '//en.wikipedia.org/wiki/WP',
 						'type' => 'RLIKE',
 						'query' => '.*(\[\[WP:HG\|HG\]\]|WP:Huggle).*',
 						'regex' => '/.*(\[\[WP:HG\|HG\]\]|WP:Huggle).*/',
 						'shortcut' => 'WP:HG'
 					),
 				
-				'Twinkle' => array( 
+				'Twinkle' => array(
+						'url' => '',
 						'type' => 'LIKE',
 						'query' => '%WP:TW%',
 						'regex' => '/.*WP:TW.*/',
@@ -584,6 +705,7 @@ class Counter {
 					),
 
 				'Articles For Creation tool' => array(
+						'url' => '',
 						'type' => 'LIKE',
 						'query' => '%([[WP:AFCH|AFCH]])%',
 						'regex' => '/.*\(\[\[WP:AFCH\|AFCH\]\]\).*/',
@@ -591,6 +713,7 @@ class Counter {
 					),
 				
 				'AutoWikiBrowser' => array(
+						'url' => '',
 						'type' => 'RLIKE',
 						'query' => '.*(AutoWikiBrowser|AWB).*',
 						'regex' => '/.*(AutoWikiBrowser|AWB).*/',
@@ -598,6 +721,7 @@ class Counter {
 					),
 				
 				'Friendly' => array( 
+						'url' => '',
 						'type' => 'LIKE', 
 						'query' => '%WP:FRIENDLY%',
 						'regex' => '/.*WP:FRIENDLY.*/',
@@ -605,6 +729,7 @@ class Counter {
 					),
 				
 				'FurMe' => array( 
+						'url' => '',
 						'type' => 'RLIKE', 
 						'query' => '.*(User:AWeenieMan/furme|FurMe).*',
 						'regex' => '/.*(User:AWeenieMan\/furme|FurMe).*/',
@@ -612,6 +737,7 @@ class Counter {
 					),
 				
 				'Popups' => array( 
+						'url' => '',
 						'type' => 'LIKE', 
 						'query' => '%Wikipedia:Tools/Navigation_popups%',
 						'regex' => '/.*Wikipedia:Tools\/Navigation_popups.*/',
@@ -619,6 +745,7 @@ class Counter {
 					),
 				
 				'MWT' => array( 
+						'url' => '',
 						'type' => 'LIKE', 
 						'query' => '%User:MichaelBillington/MWT%',
 						'regex' => '/.*User:MichaelBillington\/MWT.*/',
@@ -626,6 +753,7 @@ class Counter {
 					),
 				
 				'NPWatcher' => array( 
+						'url' => '',
 						'type' => 'LIKE', 
 						'query' => '%WP:NPW%',
 						'regex' => '/.*WP:NPW.*/',
@@ -633,6 +761,7 @@ class Counter {
 					),
 				
 				'Amelvand' => array( 
+						'url' => '',
 						'type' => 'LIKE', 
 						'query' => 'Reverted % edit% by % (%) to last revision by %',
 						'regex' => '^Reverted.*edit.*by .* \(.*\) to last revision by .*/',
@@ -640,6 +769,7 @@ class Counter {
 					),
 				
 				'Igloo' => array( 
+						'url' => '',
 						'type' => 'RLIKE', 
 						'query' => '.*(User:Ale_jrb/Scripts/igloo|GLOO).*',
 						'regex' => '/.*(User:Ale_jrb\/Scripts\/igloo|GLOO).*/',
@@ -647,6 +777,7 @@ class Counter {
 					),
 				
 				'HotCat' => array( 
+						'url' => '',
 						'type' => 'LIKE', 
 						'query' => '%(using [[WP:HOTCAT|HotCat]])%',
 						'regex' => '/.*\(using \[\[WP:HOTCAT\|HotCat\]\]\).*/',
@@ -654,6 +785,7 @@ class Counter {
 					),
 				
 				'STiki' => array( 
+						'url' => '',
 						'type' => 'LIKE', 
 						'query' => '%STiki%',
 						'regex' => '/.*STiki.*/',
@@ -661,6 +793,7 @@ class Counter {
 					),
 				
 				'Dazzle!' => array( 
+						'url' => '',
 						'type' => 'LIKE', 
 						'query' => '%Dazzle!%',
 						'regex' => '/.*Dazzle\!.*/',
@@ -668,6 +801,5 @@ class Counter {
 					),
 		);
 		
-		return $AEBTypes;
-	}
+
 }

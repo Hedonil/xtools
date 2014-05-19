@@ -5,7 +5,7 @@
 
 //Load WebTool class
 	$wt = new WebTool( 'Blame', 'blame', array( "api") );
-	$wt->setMemLimit();
+	$wt->setLimits();
 	$wt->content = getPageTemplate( 'form' );
 	
 // get params from query string

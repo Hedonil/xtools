@@ -6,7 +6,7 @@
 
 //Load WebTool class
 	$wt = new WebTool( 'IP calculator', 'ipcalc', array("smarty", "sitenotice", "replag") );
-	$wt->setMemLimit();
+	$wt->setLimits();
 	
 	$base = new RangecontribsBase();
 	

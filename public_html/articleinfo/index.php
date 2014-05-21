@@ -2,12 +2,11 @@
 	
 //Requires
 	require_once( '../WebTool.php' );
-	require_once( '../Graph.php' );
 	require_once( '../ArticleInfo.php' );
-
+	require_once( '../Graph.php' );
 
 //Load WebTool class
-	$wt = new WebTool( 'ArticleInfo', 'articleinfo', array("database", "api") );
+	$wt = new WebTool( 'Page history statistics', 'articleinfo', array() );
 	$wt->setLimits();
 	
 	$wt->content = getPageTemplate( "form" );
@@ -30,6 +29,8 @@
 	
 	
 //Start dbr, site = global Objects init in WebTool
+	$site = $wt->loadPeachy( $lang, $wiki );
+	$dbr = $wt->loadDatabase( $lang, $wiki );
 	$ai = new ArticleInfo( $dbr, $site, $article, $begintime, $endtime, $nofollow );
 	
 	if( $ai->historyCount == 0 ) {
@@ -53,12 +54,14 @@
 	$wt->assign( "anonedits", $wt->numFmt( $ai->data['anon_count'] ) );
 	$wt->assign( "minorpct", $wt->numFmt( ( $ai->data['minor_count'] / $ai->data['count'] ) * 100, 1 ) );
 	$wt->assign( "anonpct", $wt->numFmt( ( $ai->data['anon_count'] / $ai->data['count'] ) * 100, 1 ) );
+	$wt->assign( "autoedits", $wt->numFmt( ( $ai->data['automated_count']) ) );
+	$wt->assign( "autoeditspct", $wt->numFmt( ( $ai->data['automated_count'] / $ai->data['count'] ) * 100, 1 ) );
 	$wt->assign( "firstedit", date( 'd F Y, H:i:s', strtotime( $ai->data['first_edit']['timestamp'] ) ) );
 	$wt->assign( "firstuser", $ai->data['first_edit']['user'] );
 	$wt->assign( "lastedit", date( 'd F Y, H:i:s', strtotime( $ai->data['last_edit'] ) ) );
-	$wt->assign( "timebwedits", $ai->data['average_days_per_edit'] );
-	$wt->assign( "editspermonth", $ai->data['edits_per_month'] );
-	$wt->assign( "editsperyear", $ai->data['edits_per_year'] );
+	$wt->assign( "timebwedits", $wt->numFmt($ai->data['average_days_per_edit'] ),1 );
+	$wt->assign( "editspermonth", $wt->numFmt($ai->data['edits_per_month'] ), 1);
+	$wt->assign( "editsperyear", $wt->numFmt($ai->data['edits_per_year'] ), 1);
 	$wt->assign( "lastday", $wt->numFmt( $ai->data['count_history']['today'] ) );
 	$wt->assign( "lastweek", $wt->numFmt( $ai->data['count_history']['week'] ) );
 	$wt->assign( "lastmonth", $wt->numFmt( $ai->data['count_history']['month'] ) );
@@ -77,6 +80,8 @@
 	$wt->assign( "wikidata", $ai->wikidatalink );
 	$wt->assign( "totalauto", $ai->data["automated_count"] );
 
+	
+//Colors
 	$pixelcolors = array( 'all' => '4D89F9', 'anon' => '55FF55', 'minor' => 'ff00ff' );
 	$wt->assign( "pixelcolors", $pixelcolors );
 		
@@ -270,28 +275,29 @@ function getPageTemplate( $type ){
 	<table>
 		<tr><td>ID:</td><td><a href="//{$url}/w/index.php?title={$urlencodedpage}&action=info" >{$pageid}</a></td></tr>
 		<tr><td>Wikidata:</td><td>{$wikidata}</td></tr>
+		<tr><td colspan=20 ></td></tr>
 		<tr><td>{#totaledits#}:</td><td>{$totaledits}</td></tr>
 		<tr><td>{#editorcount#}:</td><td>{$editorcount}</td></tr>
 		<tr><td colspan=20 ></td></tr>	
 		<tr><td>{#firstedit#}:</td><td>{$firstedit}</td></tr>
-		<tr><td>{#firstedit#} {#user#}:</td><td><a href="//{$url}/wiki/User:{$firstuser}" >{$firstuser}</a></td></tr>
+		<tr><td>{#firstedit#} {#username#}:</td><td><a href="//{$url}/wiki/User:{$firstuser}" >{$firstuser}</a></td></tr>
 		<tr><td>{#lastedit#}:</td><td>{$lastedit}</td></tr>
 		<tr><td colspan=20 ></td></tr>	
-		<tr><td>{#minoredits#}:</td><td>{$minoredits} ({$minorpct}%)</td></tr>
-		<tr><td>{#anonedits#}:</td><td>{$anonedits} ({$anonpct}%)</td></tr>
-		<tr><td>{#autoedits#}:</td><td>{$autoedits} ({$autoeditspct}%)</td>
+		<tr><td>{#minoredits#}:</td><td><span class=tdgeneral >{$minoredits}</span> &nbsp;<small>({$minorpct}%)<small></td></tr>
+		<tr><td>{#anonedits#}:</td><td><span class=tdgeneral >{$anonedits}</span> <small>({$anonpct}%)</small></td></tr>
+		<tr><td>{#autoedits_num#}:</td><td><span class=tdgeneral >{$autoedits}</span> &nbsp;<small>({$autoeditspct}%)</small></td>
 		<tr><td colspan=20 ></td></tr>	
-		<tr><td>{#timebwedits#}:</td><td>{$timebwedits} {#days#}</td></tr>
-		<tr><td>{#editspermonth#}:</td><td>{$editspermonth}</td></tr>
-		<tr><td>{#editsperyear#}:</td><td>{$editsperyear}</td></tr>
+		<tr><td>{#timebwedits#}:</td><td><span class=tdgeneral >{$timebwedits}</span> {#days#}</td></tr>
+		<tr><td>{#editspermonth#}:</td><td><span class=tdgeneral >{$editspermonth}</span></td></tr>
+		<tr><td>{#editsperyear#}:</td><td><span class=tdgeneral >{$editsperyear}</span></td></tr>
 		<tr><td colspan=20 ></td></tr>	
-		<tr style="border-top:1px solid silver;" ><td>{#lastday#}:</td><td>{$lastday}</td></tr>
-		<tr><td>{#lastweek#}:</td><td>{$lastweek}</td></tr>
-		<tr><td>{#lastmonth#}:</td><td>{$lastmonth}</td></tr>
-		<tr><td>{#lastyear#}:</td><td>{$lastyear}</td></tr>
+		<tr><td>{#lastday#}:</td><td><span class=tdgeneral >{$lastday}</span></td></tr>
+		<tr><td>{#lastweek#}:</td><td><span class=tdgeneral >{$lastweek}</span></td></tr>
+		<tr><td>{#lastmonth#}:</td><td><span class=tdgeneral >{$lastmonth}</span></td></tr>
+		<tr><td>{#lastyear#}:</td><td><span class=tdgeneral >{$lastyear}</span></td></tr>
 		<tr><td colspan=20 ></td></tr>		
-		<tr><td>{#editsperuser#}:</td><td>{$editsperuser}</td></tr>
-		<tr><td>{#toptencount#}:&nbsp;&nbsp;&nbsp;</td><td>{$toptencount} ({$toptenpct}%)</td></tr>
+		<tr><td>{#editsperuser#}:</td><td><span class=tdgeneral >{$editsperuser}</span></td></tr>
+		<tr><td>{#toptencount#}:&nbsp;&nbsp;&nbsp;</td><td><span class=tdgeneral >{$toptencount}</span> &nbsp;<small>({$toptenpct}%)</small></td></tr>
 	</table>
 	</div>
 
@@ -299,7 +305,7 @@ function getPageTemplate( $type ){
 	<table>
 		<tr>
 		<td><img src="//chart.googleapis.com/chart?cht=p&amp;chd=t:{$graphuserpct},{$graphanonpct}&amp;chs=280x100&amp;chdl={#users#}%20%28{$graphuserpct}%%29|{#ips#}%20%28{$graphanonpct}%%29&amp;chco=FF5555|55FF55&amp;chf=bg,s,00000000" alt="{#anonalt#}" /></td>
-		<td><img src="//chart.googleapis.com/chart?cht=p&amp;chd=t:{$graphminorpct},{$graphmajorpct}&amp;chs=280x100&amp;chdl={#minor#}%20%28{$graphminorpct}%%29|{#major#}%20%28{$graphmajorpct}%%29&amp;chco=FFFF55|FF55FF&amp;chf=bg,s,00000000" alt="{#minoralt#}" /></td>
+		<td><img src="//chart.googleapis.com/chart?cht=p&amp;chd=t:{$graphminorpct},{$graphmajorpct}&amp;chs=280x100&amp;chdl={#minor#}%20%28{$graphminorpct}%%29|{#major#}%20%28{$graphmajorpct}%%29&amp;chco=FFAFAF|808080&amp;chf=bg,s,00000000" alt="{#minoralt#}" /></td>
 		<td><img src="//chart.googleapis.com/chart?cht=p&amp;chd=t:{$graphtoptenpct},{$graphbottomninetypct}&amp;chs=280x100&amp;chdl={#topten#}%20%28{$graphtoptenpct}%%29|{#bottomninety#}%20%28{$graphbottomninetypct}%%29&amp;chco=5555FF|55FFFF&amp;chf=bg,s,00000000" alt="{#toptenalt#}" /></td>
 		</tr>
 	</table>
@@ -323,7 +329,7 @@ function getPageTemplate( $type ){
 	<div id="usertable">
 	<table class="months wikitable sortable">
 		<tr>
-			<th>{#user#}</th>
+			<th>{#username#}</th>
 			<th></th>
 			<th>{#count#}</th>
 			<th>{#minor#}</th>

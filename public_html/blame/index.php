@@ -4,7 +4,7 @@
 	require_once( '../WebTool.php' );
 
 //Load WebTool class
-	$wt = new WebTool( 'Blame', 'blame', array( "api") );
+	$wt = new WebTool( 'Blame', 'blame', array() );
 	$wt->setLimits();
 	$wt->content = getPageTemplate( 'form' );
 	
@@ -26,7 +26,9 @@
 	}
 
 // execute the main logic
+	$site = $wt->loadPeachy( $lang, $wiki );
 	$revs = getBlameResult( $site, $wikibase, $article, $nofollowredir, $text);
+	
 	$result = '<p>'.$I18N->msg('added').'</p><ul> ';
 	foreach ( $revs as $rev ){
 		$result .= $rev;

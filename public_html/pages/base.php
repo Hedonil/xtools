@@ -3,10 +3,12 @@
 class PagesBase{
 	
 	public function getUserData( $dbr, $username ){
+		
+		$user = $dbr->strencode($username);
 		$query = "
 			SELECT user_name, user_id 
 			FROM user 
-			WHERE user_name = '$username';
+			WHERE user_name = '$user';
 		";
 		
 		$result = $dbr->query( $query );
@@ -16,7 +18,7 @@ class PagesBase{
 	}
 	
 
-	public function getCreatedPages( $dbr, $user_id, $lang, $wiki, $namespace, $redirects ){
+	public function getCreatedPages( &$dbr, $user_id, $lang, $wiki, $namespace, $redirects ){
 		
 		$namespaceCondition = ($namespace == "all") ? "" : " and page_namespace = '".intval($namespace)."' ";
 		$redirectCondition = "";
@@ -24,7 +26,7 @@ class PagesBase{
 		if ( $redirects == "noredirects" ){ $redirectCondition = " and page_is_redirect = '0' "; }
 		
 		$query = "
-			SELECT DISTINCT page_namespace, page_title, page_is_redirect, page_id, UNIX_TIMESTAMP(rev_timestamp) as timestamp
+			SELECT DISTINCT page_namespace, page_title, page_is_redirect, page_id, rev_timestamp
 			FROM page
 			JOIN revision_userindex on page_id = rev_page
 			WHERE rev_user = '$user_id' AND rev_timestamp > 1 AND rev_parent_id = '0'  $namespaceCondition  $redirectCondition
@@ -32,7 +34,6 @@ class PagesBase{
 		";
 		
 		$items = $dbr->query( $query );
-		$items = $items->endArray;
 		
 		$nsnames = self::getNamespaceNames( $lang, $wiki );
 		
@@ -41,15 +42,16 @@ class PagesBase{
 				$namespaces  = null,
 				$list 		 = null
 			);
-		$currentNamespace = "";
+		
+		$currentNamespace = "-1";
 		$currentNumber = 0;
-
+		
 		foreach ( $items as $i => $item ){
 			$pageurl  = urlencode( $item["page_title"] );
 			$page 	  = str_replace("_", " ", $item["page_title"]);
-			$date 	  = date("Y-m-d", $item["timestamp"]);
+			$date 	  = date("Y-m-d", strtotime($item["rev_timestamp"]));
 			$ns 	  = $item["page_namespace"];
-			$prefix   = ( $nsnames[$ns] != "Mainspace" ) ? $nsnames[$ns].":" : ""; 
+			$prefix   = $nsnames[$ns].":"; 
 			$redirect = ( $item["page_is_redirect"] == 1 ) ? "(redirect)" : "";
 			
 
@@ -102,16 +104,17 @@ class PagesBase{
 	}
 	
 	function getNamespaceNames( $lang, $wiki ) {
+		
 		$http = new HTTP();
 		$namespaces = $http->get( "http://$lang.$wiki.org/w/api.php?action=query&meta=siteinfo&siprop=namespaces&format=php" );
 		$namespaces = unserialize( $namespaces );
 		$namespaces = $namespaces['query']['namespaces'];
-		 
 		unset( $namespaces[-2] );
 		unset( $namespaces[-1] );
 	
-		$namespaces[0]['*'] = "Mainspace";
-		 
+		$namespaces[0]['*'] = "Main";
+
+		
 		$namespacenames = array();
 		foreach ($namespaces as $value => $ns) {
 			$namespacenames[$value] = $ns['*'];

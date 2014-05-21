@@ -7,6 +7,7 @@ define("TTF_DIR", PATH_JPGRAPH.'/fonts/');
 #require_once(PATH_JPGRAPH."/jpgraph_pie.php");
 #require_once(PATH_JPGRAPH.'/jpgraph_line.php');
 #require_once(PATH_JPGRAPH."/jpgraph_pie3d.php");
+
 class Theme {
 }
 if(!function_exists('imageantialias'))
@@ -16,6 +17,8 @@ if(!function_exists('imageantialias'))
 		return false;
 	}
 }
+
+
 class xGraph{
 	
 	static function makePieGoogle( $data, $title = NULL ){

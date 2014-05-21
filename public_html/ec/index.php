@@ -8,7 +8,7 @@
 	
 	
 //Load WebTool class
-	$wt = new WebTool( 'Edit counter classic', 'pcount', array("database") );
+	$wt = new WebTool( 'Edit counter classic', 'pcount', array() );
 	$wt->setLimits( 650, 60 );
 	
 	$wt->content = getPageTemplate( "form" );
@@ -44,6 +44,8 @@
 	}
 
 //Create new Counter object
+	$dbr = $wt->loadDatabase( $lang, $wiki);
+	
 	$cnt = new Counter( $dbr, $user, $wikibase );
 
 	if( !$cnt->getExists() ) {
@@ -105,7 +107,7 @@
 	
 //Make list of automated edits tools
 	$list = '<div>{#autoedits_approx#}</div><br /><table>';
-	foreach ( $cnt->AEBTypes as $tool => $sth){
+	foreach ( $cnt->getAEBTypes() as $tool => $sth){
 		$list .= '
 				<tr>
 				</td><td class="tdnum" style="min-width: 50px; ">'.$wt->numFmt($cnt->mAutoEditTools[$tool]).'</td>
@@ -177,7 +179,7 @@
 	$wt->assign( "yearcounts", $graphYears );
 	
 	
-	if( $cnt->isOptedIn( $cnt->getName() ) ) {
+	if( true ){ //$cnt->isOptedIn( $cnt->getName() ) ) {
 		$wt->assign( "monthcounts", $graphMonths );
 		$wt->assign( "topedited", $out );
 	}
@@ -205,16 +207,12 @@ function getPageTemplate( $type ){
 
 	$templateForm = '
 			
-	<script type="text/javascript">
-		var collapseCaption = "{#hide#}";
-		var expandCaption = "{#show#}";
-	</script>
 	<br />
 	{#welcome#}
 	<br /><br />
 	<form action="?" method="get">
 		<table>
-		<tr><td>{#user#}: </td><td><input type="text" name="user" /></td></tr>
+		<tr><td>{#username#}: </td><td><input type="text" name="user" /></td></tr>
 		<tr><td>{#wiki#}: </td><td><input type="text" value="{$lang}" name="lang" size="9" />.<input type="text" value="{$wiki}" size="10" name="wiki" />.org</td></tr>
 		<tr><td colspan="2"><input type="submit" value="{#submit#}" /></td></tr>
 		</table>
@@ -235,7 +233,7 @@ function getPageTemplate( $type ){
 	}
 	</script>
 	<div style="text-align:center; font-weight:bold; " >
-			<span style="padding-right:10px;" >{#user#} &nbsp;&bull; </span>
+			<span style="padding-right:10px;" >{#username#} &nbsp;&bull; </span>
 			<a style=" font-size:2em; " href="http://{$url$}/wiki/User:{$usernameurl$}">{$username$}</a>
 			<span style="padding-left:10px;" > &bull;&nbsp; {$url} </span>
 	</div>

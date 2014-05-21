@@ -5,7 +5,7 @@
 	require_once( '../Counter.php' );
 
 //Load WebTool class
-	$wt = new WebTool( 'AutoEdits', 'autoedits', array("database") );
+	$wt = new WebTool( 'Automated Edits', 'autoedits', array() );
 	$wt->setLimits();
 	 
 	$wt->content = getPageTemplate( "form" );
@@ -16,7 +16,8 @@
 	$user = $wgRequest->getVal( 'user' );
 	$lang = $wgRequest->getVal( 'lang' );
 	$wiki = $wgRequest->getVal( 'wiki' );
-	$wikibase = $lang.".".$wiki;
+	
+	$wikibase = $lang.".".$wiki.".org";
 	$begin = $wgRequest->getVal( 'begin' );
 	$end = $wgRequest->getVal( 'end' );
 
@@ -25,7 +26,8 @@
 		$wt->showPage();
 	}
 	
-	$cnt = new Counter( $user, $wikibase );
+	$dbr = $wt->loadDatabase( $lang, $wiki );
+	$cnt = new Counter( $dbr, $user, $wikibase, true );
 	
 	if( !$cnt->getExists() ) {
 		$wt->error = $I18N->msg( 'nosuchuser');
@@ -34,11 +36,11 @@
 
 
 //Start doing the DB request
-	$data = $cnt->calcAutoEditsDB($dbr, $begin, $end);
+	$data = $cnt->calcAutoEditsDB( $dbr, $begin, $end );
 	
 	$list = '<ul>';
-	foreach ( $data["tools"] as $i => $tool  ){
-		$list .= '<li><a href="//'.$wikibase.'/wiki/'.$tool["shortcut"].'">'.$tool["toolname"].'</a> &ndash; '.$wt->numFmt($tool["count"]).'</li>';
+	foreach ( $data["tools"] as $toolname => $count  ){
+		$list .= '<li><a href="//en.wikipedia.org/wiki/'.Counter::$AEBTypes[$toolname]["shortcut"].'">'.$toolname.'</a> &ndash; '.$wt->numFmt($count).'</li>';
 	}
 	$list .= '</ul>';
 	
@@ -46,7 +48,7 @@
 	$wt->assign( 'list', $list);
 	$wt->assign( 'totalauto', $wt->numFmt($data['total']) );
 	$wt->assign( 'totalall', $wt->numFmt($data['editcount']) );
-	$wt->assign( 'pct', $data['pct'] );
+	$wt->assign( 'pct', $wt->numFmt( $data['pct'], 1 ) );
 	
 
 unset( $cnt, $data, $list );
@@ -63,7 +65,7 @@ function getPageTemplate( $type ){
 			
 	<form action="?" method="get" accept-charset="utf-8">
 	<table>
-		<tr><td>{#user#}: </td><td><input type="text" name="user" /></td></tr>
+		<tr><td>{#username#}: </td><td><input type="text" name="user" /></td></tr>
 		<tr><td>{#wiki#}: </td><td><input type="text" value="{$lang}" name="lang" size="9" />.<input type="text" value="{$wiki}" size="10" name="wiki" />.org</td></tr>
 		<tr><td>{#start#}: </td><td><input type="text" name="begin" /></td></tr>
 		<tr><td>{#end#}: </td><td><input type="text" name="end" /></td></tr>

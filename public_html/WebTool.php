@@ -1,28 +1,30 @@
 <?php
 DEFINE('STARTTIME', microtime(True) );
 DEFINE('STARTMEM', memory_get_usage(true) );
+
 DEFINE('PEACHY_BASE_SYS_DIR', '/data/project/newwebtest' );
 DEFINE('XTOOLS_BASE_SYS_DIR', '/data/project/newwebtest' );
 DEFINE('XTOOLS_BASE_WEB_DIR', '//tools.wmflabs.org/newwebtest' );
+DEFINE('XTOOLS_I18_TEXTFILE', '/data/project/newwebtest/i18n/Supercount.i18n.php');
+DEFINE('XTOOLS_REDIS_FLUSH_TOKEN', 'x000000');
 
 $perflog = new Perflog();
 
 // Incudes
-	echo "<!--";
+	require_once('/data/project/intuition/src/Intuition/ToolStart.php');
 	require_once( PEACHY_BASE_SYS_DIR . '/Peachy/Init.php' );
-	echo "-->";
-	require_once( 'I18N.php' );
 
 
 /**
  * Main class for all xtools subtools
+ * Requires the following Peachy classes (or equivalent):
+ * HTTP, WebRequest, Wiki
  * @author jb
  *
  */
 class WebTool {
 	public $basePath = XTOOLS_BASE_WEB_DIR;
 	
-	public $toolname;
 	public $moreheader;
 	
 	public $sitenotice;
@@ -52,18 +54,19 @@ class WebTool {
 	private $mOutput;
 
 	function __construct( $viewtitle = null, $configtitle = null, $options = array() ) {
-		global $wgRequest, $I18N, $redis, $lang, $wiki, $url, $dbr, $site;
+		global $wgRequest, $dbr, $site, $I18N, $redis, $lang, $wiki, $url;
 		
 		//old style -> global object
 		$wgRequest = new WebRequest();
 		$this->getWikiInfo();
 		
 		$redis = $this->initRedis();
+		$I18N = $this->initI18N();
 		
-		$this->uselang = $wgRequest->getSafeVal( 'uselang', 'en');
+		$this->uselang = $wgRequest->getVal( 'uselang', 'en');
 		$I18N->setLang( $this->uselang );
 		
-		$this->toolname = $viewtitle;
+		$this->title = $viewtitle;
 		$this->sourcecode = '<a href="//github.com/x-Tools/xtools/" >'.$I18N->msg('source').'</a> |';
 		$this->bugreport = '<a href="//github.com/x-Tools/xtools/issues" >'.$I18N->msg('bugs').'</a> |';
 		$this->translate = $I18N->msg('translatelink');
@@ -72,9 +75,7 @@ class WebTool {
 		$this->numberFormater = new NumberFormatter( $I18N->getLang(), NumberFormatter::DECIMAL);
 		$this->dateFormater   = new IntlDateFormatter( $I18N->getLang(), IntlDateFormatter::MEDIUM, IntlDateFormatter::MEDIUM, "UTC", IntlDateFormatter::GREGORIAN);
 		
-		$this->sitenotice = ( $sitenotice ) ? $sitenotice : null;
-		
-		
+	
 		mb_internal_encoding("utf-8"); 
 		header('content-type: text/html; charset: utf-8'); 
 		
@@ -83,7 +84,7 @@ class WebTool {
 		
 		if( in_array( 'database', $options ) ) { $dbr = $this->loadDatabase( $lang, $wiki ); }
 			
-		if( in_array( 'api', $options ) ) { $site = $this->loadPeachy( $url ); }
+		if( in_array( 'api', $options ) ) { $site = $this->loadPeachy( $lang, $wiki ); }
 
 // 		if( !in_array( 'addstat', $dont ) ) {
 // 			require_once( '/data/project/xtools/stats.php' );
@@ -115,12 +116,12 @@ class WebTool {
 		set_time_limit ( $time );
 	}
    
-	public function loadPeachy( $url ) {
+	public function loadPeachy( $lang, $wiki ) {
 		global $pgVerbose;
 		
 		$pgVerbose = array();
 
-		return Peachy::newWiki( null, null, null, 'http://'.$url.'/w/api.php' );
+		return Peachy::newWiki( null, null, null, "http://$lang.$wiki.org/w/api.php" );
 	}
 	
 	function loadDBCredentials(){
@@ -156,7 +157,6 @@ class WebTool {
 			$dbr = new Database2( $server, $dbUser, $dbPwd, $dbname );
 			$dbr->classType = 'peachy';
 #			$dbr->replagtime = $this->getReplag( $dbr );
-			
 			return $dbr;
 		} 
 		catch( DBError $e ) {
@@ -177,6 +177,59 @@ class WebTool {
 		return floor( $res[0]['replag'] );
 	}
 	
+	function initI18N(){
+		global $redis;
+		
+		$ttl = 86400;
+		$hash = hash( 'crc32', "xtoolsI18N".XTOOLS_REDIS_FLUSH_TOKEN );
+		
+		$lc = $redis->get( $hash );
+		if ( $lc === false ) {
+			
+			$I18N = new Intuition();
+			$I18N->loadTextdomainFromFile( XTOOLS_I18_TEXTFILE, 'supercount');
+			$I18N->setDomain('supercount');
+			$I18N->langLinks = $this->generateLangLinks( $I18N->getAvailableLangs('supercount') );
+			
+			$redis->setex( $hash, $ttl, serialize($I18N) );
+		}
+		else {
+			$I18N = unserialize($lc);
+		 	unset($lc);
+		}
+		
+		return $I18N;
+	}
+	
+	
+	/**
+	 * Generates a list of languages that aren't currently selected
+	 * @return string $langlinks variable
+	 */
+	function generateLangLinks( $langArr ) {
+		
+		$langLinks = "";
+		foreach( $langArr as $langCode => $langName ) {
+			#		if( $cur_lang != $this->mLang ) {
+	
+			$url = "//tools.wmflabs.org".$_SERVER['REQUEST_URI'];
+	
+			if( strpos( $url, 'uselang') > 0 ) {
+				$url = preg_replace( '/uselang=(.*?)&?/', '', $url );
+			}
+			if( strpos( $url, '?') > 0 ) {
+				$url = $url . "&uselang=".$langCode;
+			}
+			else {
+				$url = $url . "?uselang=".$langCode;
+			}
+	
+			$langLinks.="<a href=\"". $url."\" title=\"$langName\" >".$langCode."</a> ";
+			#		}
+		}
+	
+		return $langLinks;
+	}
 	
 	function getWikiInfo() {
 		global $wgRequest, $lang, $wiki, $url;
@@ -186,22 +239,56 @@ class WebTool {
 		$url = $lang.'.'.$wiki.'.org';
 	}
 	
+	/**
+	 * Checks dates: Input format YYYY-MM-DD or YYYY-MM or YYYY
+	 * @param string $date
+	 * @return string
+	 */
+	function checkDate ( $date ){
+		if ( !$date) return null;
+		
+		$len = strlen($date);
+		switch ($len) {
+			case 10:
+				$year = substr($date,0,4);
+				$mon  = substr($date,5,2);
+				$day  = substr($date,8,2);				
+				break;
+			case 7:
+				$year = substr($date,0,4);
+				$mon  = substr($date,5,2);
+				$day  = "01";				
+				break;
+			case 4:
+				$year = substr($date,0,4);
+				$mon  = "01";
+				$day  = "01";
+				break;
+			
+			default: 
+				;
+		}
+		// check format month,day,year
+		if ( checkdate( $mon, $day, $year ) ){
+			$res = "$year-$mon-$day";
+		}
+		else{
+			$res = 'error';
+		}
+		
+		return $res;
+	}
+	
 	public function toDie( $msgStr , $var=null ) {
 		global $I18N;
 		
 		if( is_string($var) ){ $var = array($var); }
 		
 		$msg = $I18N->msg( $msgStr , array("variables" => $var) );		
-		$this->assign( "error", $msg );
+		$this->error = $msg ;
 		$this->showPage();
 	}
 	
-	
-	static function pre( $array ) {
-		echo "<pre>";
-		print_r( $array );
-		echo "</pre>";
-	}
 	
 	public function prettyTitle( $s, $capital = false ) {
 		$name = trim( str_replace( array('&#39;','%20'), array('\'',' '), $s ) );
@@ -244,15 +331,17 @@ class WebTool {
 		
 		$redis = new Redis();
 		if ($redis->connect('tools-redis', 6379)){
-			$enableCache = true;
 			try {
 				$redis->info("server");
 			}
 			catch (Exception $e){
-				$redis = null;
+				$redis = new RedisFake();
 			}
 		}
-		
+		else {
+			$redis = new RedisFake();
+		}
+
 		return $redis;
 	}
 	
@@ -342,7 +431,6 @@ class Database2{
 		
 		$this->dbo = new mysqli( $server, $dbUser, $dbPassword, $database);
 		$this->dbo->set_charset("utf8");
-		
 		$this->dbotype = 'custom';
 		$this->server = $server;
 		$this->database = $database;
@@ -350,27 +438,16 @@ class Database2{
 	
 	function query( $queryString ) {
 		
+		$ff = new mysqli($host, $user, $password, $database, $port, $socket);
+		$result = $ff->query();
+		
 		$mysqli = &$this->dbo;
 		$retArr = null;
 		
 		if ( $result = $mysqli->query( $queryString ) ){
 			
-			$fields = $result->fetch_fields();
-#print_r($fields);
 			while( $row = $result->fetch_assoc() ){
-				
-				$wrapper = array();
-				foreach ($fields as $field ){
-					//check if type is interger
-					if ( $field->type == 3 ) {
-						$wrapper[ $field->name ] = (int)$row[ $field->name ];
-					}
-					else {
-						$wrapper[ $field->name ] = $row[ $field->name ];
-					}
-				}
-				
-				$retArr[] = $wrapper;
+				$retArr[] = $row;				
 			}
 			$result->close();
 		}
@@ -386,7 +463,7 @@ class Database2{
 	}
 	
 	function multiquery( $queries ){
-		global $redis;
+		global $redis, $perflog;
 		
 		if ($redis){
 			$sqlapi = "http://tools-webproxy/tools-info/sqlapi/api.php?";
@@ -394,38 +471,57 @@ class Database2{
 			//Get the separate queries
 			foreach ( $queries as $i => $query ){
 				
-				$server = $this->server;
-				$database = $this->database;
-				
-				if ( $query["src"] != "this" ){
-					$server = $query["src"].".labsdb";
-					$database = $query["src"]."_p";
-				}
+				if( $query["type"] == "db" ) {
 					
-				$data = array(
-						"token" => hash( "crc32", $query["query"]),
-						"server" => $server,
-						"database" => $database,
-						"query" => $query["query"],
-					);
-				$request[] = $sqlapi.http_build_query($data);
+					$server = $this->server;
+					$database = $this->database;
+					
+					if ( $query["src"] != "this" ){
+						$server = $query["src"].".labsdb";
+						$database = $query["src"]."_p";
+					}
+						
+					$data = array(
+							"token" => hash( "crc32", $query["query"]),
+							"server" => $server,
+							"database" => $database,
+							"query" => $query["query"],
+						);
+					$request[] = $sqlapi.http_build_query($data);
+				}
+				
+				if( $query["type"] == "api" ){
+					$request[] = $query["query"];
+				}
 			}
 			
 			$apiresults = $this->multicurl($request);
-#print_r($apiresults); 			
+#print_r($apiresults); 
+			
 			//Get the results from redis
 			$error = false;
 			foreach ($apiresults as $i=> $apiresult ){
+				
 				$obj = json_decode( $apiresult, false);
-#				if ( !is_object($obj) || $obj->length == 0 ) { $error = true; break; }
 				
-				$result[$i] = json_decode( $redis->get( $obj->rediskey ), true ); 
-				
+				if ( $queries[$i]["type"] == "api"){
+					$result[$i] = $obj;
+				}
+				elseif ( !is_object($obj) || $obj->length == 0 ) {
+					$start = microtime(true);
+					
+					$result[$i] = $this->query( $queries[$i]["query"] );
+					 
+					$perflog->add('dbr_local: ', (microtime(true) - $start) );
+				}
+				else{
+					$result[$i] = json_decode( $redis->get( $obj->rediskey ), true );
+					
+					$perflog->add('sql_api: '.$obj->len, $obj->exectime );
+				}
 			}
 			
-#			if ( !$error ){
-				return $result;
-#			}
+			return $result;
 			
 		}
 		
@@ -494,9 +590,24 @@ class Perflog {
 	public $stack = array();
 
 	function add( $modul, $time ){
-		array_push( $this->stack, array("modul" => $modul, "time" => number_format($time*1000, 2) ));
+		array_push( $this->stack, array("modul" => $modul, "time" => $time ));
 	}
 	function getOutput(){
 		echo "<pre>"; print_r($this->stack); echo "</pre>";
+	}
+}
+/**
+ * dummy class, if redis is not availabe
+ * @author Hedonil
+ */
+class RedisFake{
+	function get(){
+		return false;
+	}
+	function set(){
+		return false;
+	}
+	function setex(){
+		return false;
 	}
 }

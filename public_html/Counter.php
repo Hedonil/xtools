@@ -26,7 +26,8 @@ class Counter {
 	
 	public $baseurl;
 	public $apibase;
-	public $http;
+#	public $http;
+	public $mNamespaces = array( 'ids' => array(),	'names' => array() );
 	
 	private $mIP;
 	private $mExists;
@@ -79,16 +80,17 @@ class Counter {
 
 	private $perflog;
 	
+	private $data;
 	
 	function __construct( &$dbr, $user, $wikibase, $noautorun=false ) {
 		
-		$this->http = new HTTP();
+#		$this->http = new HTTP();
 		$this->baseurl = 'http://'.$wikibase;
 		$this->apibase = $this->baseurl.'/w/api.php?';
 		
 		$this->mName = $user;
 		
-		$this->getUserInfo();
+		$this->getUserInfo( $dbr );
 		
 		if ( !$this->mExists || $noautorun ) return ;
 		
@@ -105,7 +107,7 @@ class Counter {
 	}
 
 	
-	function getUserInfo(){
+	function getUserInfo( $dbr ){
 		$pstart = microtime(true);
 		
 		$this->mIP = ( long2ip( ip2long( $this->mName ) ) == $this->mName ) ? true : false;
@@ -124,9 +126,44 @@ class Counter {
 					'usprop' => 'blockinfo|groups|implicitgroups|editcount|registration',
 					'ususers'=> $this->mName
 				);
-	
-			$res = json_decode( $this->http->get( $this->apibase.http_build_query($data)) );
-			$res = $res->query->users[0];
+			$query[] = array(
+					"type" => "api",
+					"src" => "",
+					"query" => $this->apibase.http_build_query( $data )
+				);
+			
+			//GEt global suser info
+			$data = array(
+					'action' => 'query',
+					'meta' => 'globaluserinfo',
+					'format' => 'json',
+					'guiprop' => 'groups|rights|merged|unattached|editcount',
+					'guiuser' => $this->mName,
+				);
+			$query[] = array(
+					"type" => "api",
+					"src" => "",
+					"query" => $this->apibase.http_build_query( $data )
+				);
+
+			//Get Namespaces
+			$data = array(
+					'action' => 'query',
+					'meta' => 'siteinfo',
+					'format' => 'json',
+					'siprop' => 'namespaces',
+				);
+			$query[] = array(
+					"type" => "api",
+					"src" => "",
+					"query" => $this->apibase.http_build_query( $data )
+				);
+			
+						
+			$multires = $dbr->multiquery ($query );
+			
+			
+			$res = $multires[0]->query->users[0];
 			
 			if ( isset( $res->userid) ){
 				$this->mUID = $res->userid;
@@ -142,17 +179,7 @@ class Counter {
 			unset($res);
 			
 			
-			//Get global user info
-			$data = array(
-					'action' => 'query',
-					'meta' => 'globaluserinfo',
-					'format' => 'json',
-					'guiprop' => 'groups|rights|merged|unattached|editcount',
-					'guiuser' => $this->mName,
-				);
-			
-			$res = json_decode( $this->http->get( $this->apibase.http_build_query($data)) );
-			$res = $res->query->globaluserinfo;
+			$res = $multires[1]->query->globaluserinfo;
 			
 			if ( isset( $res->id) ){
 				$this->mGroupsGlobal = $res->groups;
@@ -166,7 +193,15 @@ class Counter {
 				
 				$this->mRegisteredWikis = count($this->wikis);
 				$this->mTotalGlobal = array_sum($this->wikis);
-#print_r($this->wikis);
+			}
+			unset($res);
+			
+			$res = $multires[2]->query->namespaces;
+		
+			foreach( $res as $id => $ns ) {
+				$nsname = ( $ns->{'*'} == "" ) ? 'Main' : $ns->{'*'};
+				$this->mNamespaces['ids'][$nsname] = $id;
+				$this->mNamespaces['names'][$id] =  $nsname;
 			}
 		}
 		
@@ -181,7 +216,7 @@ class Counter {
 	function fetchData ( &$dbr ){
 		$pstart = microtime(true);
 		
-		$where = ( $this->mIP ) ? "rev_user_text = '$this->mName' " : "rev_user = '$this->mUID' AND rev_timestamp > 1";
+		$where = ( $this->mIP ) ? "rev_user_text = '$this->mName' " : "rev_user = '$this->mUID' AND rev_timestamp > 1 ";
 		$query[] = array(
 				"type" => "db",
 				"src" => "this",
@@ -237,14 +272,14 @@ class Counter {
 					WHERE log_type = 'upload' AND $where
 				"
 			);
-		
-		$ff = $dbr->multiquery( $query );
-		
-		$this->revs = $ff[0];
-		$this->logs = $ff[1];
-		$this->mDeleted = $ff[2][0]["count"];
-		if ( 1 === preg_match('/revertedEdits=([0-9]+)/', $ff[3][0]['frp_user_params'], $capt)){ $this->mReverted = $capt[1]; }
-		$this->mUploadedCommons = $ff[4][0]["count"];
+#print_r($query);		
+		$this->data = $dbr->multiquery( $query );		
+
+		$this->revs = &$this->data[0];
+		$this->logs = &$this->data[1];
+		$this->mDeleted = $this->data[2][0]["count"];
+		if ( 1 === preg_match('/revertedEdits=([0-9]+)/', $this->data[3][0]['frp_user_params'], $capt)){ $this->mReverted = $capt[1]; }
+		$this->mUploadedCommons = $this->data[4][0]["count"];
 #print_r($ff[1]);
 
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
@@ -299,8 +334,6 @@ class Counter {
 	function parseRevisions(){
 		$pstart = microtime(true);
 		
-// 		global $wgNamespaces;
-		
 // 		$base_ns = array();
 
 // 		foreach( $wgNamespaces['names'] as $id => $name ) {
@@ -351,7 +384,7 @@ class Counter {
 			
 			if ( $row["rev_parent_id"] == 0 ) { $this->mCreated++ ; }
 			
-			foreach ( $this->AEBTypes as $tool => $signature ){
+			foreach ( self::getAEBTypes() as $tool => $signature ){
 				if ( preg_match( $signature["regex"], $row['rev_comment']) ){
 					$this->mAutoEdits++;
 					$this->mAutoEditTools[$tool]++;
@@ -361,7 +394,7 @@ class Counter {
 			
 			$this->mLive++;
 			
-			unset( $this->revs[$u] );
+#			unset( $this->revs[$u] );
 		}
 
 		$this->mFirstEdit = date('Y-m-d H:i:s', strtotime( $this->mFirstEdit ) );
@@ -437,48 +470,45 @@ class Counter {
 	/**
 	 * Modul for standalone call from /autoedits
 	 */
-	static function calcAutoEditsDB( &$dbr, $begin, $end, $api = false ) {
+	public function calcAutoEditsDB( &$dbr, $begin, $end ) {
 		global $perflog; $start = microtime(true);
 		
-		$AEBTypes = $this->getAEBTypes();
-		$this->getCounts();
+		$user = $dbr->strencode( $this->mName );
+		$AEBTypes = self::getAEBTypes();
+
 	
-		$cond_begin = ( $begin ) ? 'AND UNIX_TIMESTAMP(rev_timestamp) > ' . $dbr->strencode( strtotime( $begin )) : null;
-		$cond_end 	= ( $end ) ? 'AND UNIX_TIMESTAMP(rev_timestamp) < ' . $dbr->strencode( strtotime( $end )) : null;
+		$cond_begin = ( $begin ) ? 'AND UNIX_TIMESTAMP(rev_timestamp) > ' . strtotime( $begin ) : null;
+		$cond_end 	= ( $end ) ? 'AND UNIX_TIMESTAMP(rev_timestamp) < ' . strtotime( $end ) : null;
 	
-		$contribs = array();
-		$error = false;
-		$query = "";
-		foreach( $AEBTypes as $name => $check ) {
+		foreach( $AEBTypes as $toolname => $check ) {
 				
-			$cond_tool = 'AND rev_comment ' . $check['type'] . ' \'' . $check['query'] . '\'';
+			$cond_tool = " AND rev_comment ".$check['type']." '".$check['query']. "' ";
 				
-			$query .= "UNION
-			SELECT '$name' as toolname, count(*) as count
-			FROM revision_userindex
-			WHERE rev_user_text = '$this->mName' $cond_begin $cond_end $cond_tool
-			";
+			$query[] .= "
+					SELECT '$toolname' as toolname, count(*) as count
+					FROM revision_userindex
+					WHERE rev_user_text = '$user' $cond_begin $cond_end $cond_tool
+				";
 		}
-		$query = substr( $query, 6 );
-		$res = $dbr->query( $query );
-	
-		$sum = 0;
-		foreach ( $res->endArray as $i => $item ){
-			$contribs["tools"][$i]["toolname"] = $item['toolname'];
-			$contribs["tools"][$i]["count"] = $item['count'];
-			$contribs["tools"][$i]["shortcut"] = $AEBTypes[ $item["toolname"] ]["shortcut"];
-			$sum += $item["count"];
+		$query[] = " SELECT 'live' as toolname ,count(*) as count from revision_userindex WHERE rev_user_text = '$user' ";
+		$query[] = " SELECT 'deleted' as toolname, count(*) as count from archive_userindex WHERE ar_user_text = '$user' ";
+		
+		$res = $dbr->query( implode(" UNION ", $query ) );
+		
+		foreach ( $res as $i => $item ){
+			$contribs["tools"][ $item['toolname'] ] = $item['count'];
 		}
+
+		$contribs["editcount"] = $contribs["tools"]["live"] + $contribs["tools"]["deleted"];
+		unset( $contribs["tools"]["live"], $contribs["tools"]["deleted"] );
 		
-		$contribs["total"] = $sum;
-		$contribs["pct"] = number_format( ( ( $this->mTotal ? $sum / $this->mTotal : 0 ) *100 ), 2);
-		$contribs["editcount"] = $this->mTotal;
+		$contribs["total"] = array_sum( $contribs["tools"] );
+		$contribs["pct"] = ( $contribs["total"] / $contribs["editcount"] ) *100 ;
 		
-		#$this->mAutoEdits = 
+		
 		$perflog->add(__FUNCTION__, microtime(true)-$start );
-		return $contribs;
 		
-		#unset( $contribs, $res );
+		return $contribs;
 	}
 	
 	
@@ -576,33 +606,10 @@ class Counter {
 		return "false";
 	}
 	
-	/**
-	 * @param object $http
-	 * @return Ambigous <multitype:multitype: , unknown>
-	 */
-	function getNamespaces() {
-	
-		$x = unserialize( $this->http->get( $this->apibase . 'action=query&meta=siteinfo&siprop=namespaces&format=php' ) );
-	
-		unset( $x['query']['namespaces'][-2] );
-		unset( $x['query']['namespaces'][-1] );
-	
-		$res = array(
-				'ids' => array(),
-				'names' => array()
-		);
-	
-		foreach( $x['query']['namespaces'] as $id => $ns ) {
-			$nsname = ( $ns['*'] == "" ) ? 'Main' : $ns['*'];
-			$res['ids'][$nsname] = $id;
-			$res['names'][$id] =  $nsname;
-		}
-
-		return $res;
-		
+	function getNamespaces(){
+		return $this->mNamespaces;
 	}
-	
-	
+		
 	function getMonthTotals() {
 		return $this->mMonthTotals;
 	}
@@ -686,8 +693,11 @@ class Counter {
 		return $this->mAutoEdits;
 	}
 	
+	static function getAEBTypes(){
+		return self::$AEBTypes;
+	}
 			
-	public $AEBTypes = array(
+	public static $AEBTypes = array(
 				'Huggle' => array(
 						'url' => '//en.wikipedia.org/wiki/WP',
 						'type' => 'RLIKE',

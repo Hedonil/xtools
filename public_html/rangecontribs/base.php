@@ -1,21 +1,145 @@
 <?php 
 
-class RangecontribsBase{
+class RangeContribs{
 	
+	private $items;
+	private $sqlconds;
+	private $matchingIPs;
+	
+	private $contribs;
+	
+	function getContribs(){
+		return $this->contribs;
+	}
+	
+	function __construct( &$dbr, $input, $begin=null, $end=null, $limit=20 ){
+	
+		$this->checkType($input);
+		$this->getMatchingIPs( $dbr, $begin, $end );
+		$this->fetchContribs( $dbr, $limit );
+	}
+	
+	
+	/**
+	 * Check input types: cidr, ip's, names or mixed and determine dql conditions
+	 * @param string $input textfield
+	 * @return void
+	 */
+	private function checkType( $input ){
 		
-	public function getMatchingIPs( $dbr, $ip_prefix ){
+		$lines = explode( "\n", $input );
+		foreach ($lines as $line ){
+			
+			$tmp = trim(preg_replace('/[^\d|\.|\/]/','', $line));
+			if( preg_match( '/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/', $tmp ) === 1 ) {
+				$this->items[cidr][] = $tmp;
+			}
+			elseif( preg_match( '/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/', $tmp ) === 1 ) {
+				$this->items[ip][] = $tmp;
+			}
+			elseif( preg_match( '/[\/]/', $line ) === 1 ) {
+				$this->items[error][] = $line; 
+			}
+			else{
+				$this->items[user][] = $line;
+			}
+		}
+		
+		foreach ( $this->items["cidr"] as $i => $item ){
+			$cidr_info = $this->calcCIDR( $item );
+			$this->items["cidr"]["info"][] = $cidr_info;
+			$this->sqlconds["like"][] = $this->findMatch( $cidr_info['begin'], $cidr_info['end'] );
+		}
+		
+		foreach ( $this->items["user"] as $item ){
+			$this->sqlconds["equal"][] = $item;
+		}
+		
+		$cidr_info = $this->calcRange( $this->items["ip"] );
+		//if the range is too small (1-2) or too big >4096 ip's, we assume it's just a bunch of single ip's (and no range)
+		if ( $cidr_info["count"] >2 && $cidr_info["count"] <= 4096 ){
+			$this->items["ip"]["info"][] = $cidr_info ;
+			$this->sqlconds["like"][] = $this->findMatch( $cidr_info['begin'], $cidr_info['end'] );
+		}else {
+			foreach ( $this->items["ip"] as $item ){
+				$this->sqlconds["equal"][] = $item;
+			}	
+		}
+		
+
+#print_r($this->items);
+#print_r($this->sqlconds);
+	}
+	
+	private function getMatchingIPs( &$dbr, $begin, $end ){
+		
+		$period = ($begin) ? " AND rev_timestamp > '".str_replace("-", "", $begin)."'" : " AND rev_timestamp > 1 ";
+		$period .= ($end) ? " AND rev_timestamp < '".str_replace("-", "", $end)."'" : "" ;
+		
+		//Let's construct the sql from sqlconds array
+		$i = 0;
+		foreach ($this->sqlconds["like"] as $item ){
+			$like[] = " rev_user_text LIKE '".$dbr->strencode($item)."%' ";
+			$i++;
+		}
+		if( $i>0 ){ 
+			$conds[] = " (( ".implode(" OR ", $like).") AND rev_user = 0 ) "; 
+		}
+		
+		
+		$i = 0;
+		foreach ($this->sqlconds["equal"] as $item ){
+			$in[] = " '".$dbr->strencode($item)."' ";
+			$i++; 
+		}
+		if( $i > 0) {
+			$conds[] = "rev_user_text IN (".implode(",", $in).") ";
+		}
+		
+		$conditions = implode( " OR " , $conds );
+		
 		$query = "
 			SELECT rev_user_text, count(rev_user_text) as sum
 			FROM revision_userindex
-			WHERE rev_user_text LIKE '{$ip_prefix}%' AND rev_user = '0'
+			WHERE $conditions $period
 			Group by rev_user_text
 			Order by INET_ATON(rev_user_text)
 		";
 		
-		$result = $dbr->query( $query );
-		
-		return $result->endArray;
+		$this->matchingIPs = $dbr->query( $query );
+#print_r($query);
+#print_r($this->matchingIPs);
+
 	}
+	
+	
+	private function fetchContribs( $dbr, $limit ){
+		$wikibase = $lang.".".$wiki.".org";
+	
+		foreach ( $this->matchingIPs as $i => $matchingIP ){
+				
+			$ip = $matchingIP["rev_user_text"];
+			$sum = $matchingIP["sum"];
+				
+			$query[] = "
+					SELECT '$sum' as sum, b.page_title, b.rev_id, b.rev_user_text, UNIX_TIMESTAMP(b.rev_timestamp) as rev_timestamp, 
+							b.rev_minor_edit, b.rev_comment, b.page_namespace
+					From(
+						SELECT page_title, rev_id, rev_user_text, rev_timestamp, rev_minor_edit, rev_comment, page_namespace
+						FROM revision_userindex
+						JOIN page ON page_id = rev_page
+						WHERE rev_user_text = '$ip' 
+						ORDER BY rev_user_text ASC, rev_timestamp DESC
+						LIMIT $limit
+					) as b
+			";
+		}
+	
+		$this->contribs = $dbr->query( implode(" UNION ", $query ) );
+	}
+	
+
+	
 	
 	/**
 	 * Get some ripe information about the IP 
@@ -23,17 +147,18 @@ class RangecontribsBase{
 	 * 
 	 * @return array $matchingIPs
 	 */
-	public function getIPInformation( &$matchingIPs, $http ){
+	public function getIPInformation( $http ){
 		
 		$ranges = array();
 		$i = 0;
 		
-		foreach ( $matchingIPs as $e => $matchingIP ){
+		foreach ( $this->matchingIPs as $e => $matchingIP ){
 			
 			$ip = $matchingIP["rev_user_text"];
-#echo $ip;
-			$ipval = ip2long($ip);
-#echo $ipval;			
+			$ipval = ip2long( $ip );
+			
+			if ( long2ip( $ipval ) != $ip ) { continue ; }
+			
 			$match = false;
 			foreach ( $ranges as $range ){
 				if ( $ipval >= $range->minval && $ipval <= $range->maxval  ) {
@@ -78,7 +203,7 @@ class RangecontribsBase{
 		//Loop again and assign values to the ip's
 		$list = "<table>";
 		$oldnet = "";
-		foreach ( $matchingIPs as $u => $matchingIP ){
+		foreach ( $this->matchingIPs as $u => $matchingIP ){
 			$ip = $matchingIP["rev_user_text"];
 			$ipval = ip2long($ip);
 			foreach ( $ranges as $range ){
@@ -107,87 +232,15 @@ class RangecontribsBase{
 		return $list;
 	}
 	
-	public function getRangeContribs( $dbr, $lang, $wiki, $matchingIPs, $ip_prefix, $cidr_info, $limit  ){
-		$wikibase = $lang.".".$wiki.".org";
-		
-		foreach ( $matchingIPs as $matchingIP ){
-			$ip = $matchingIP["rev_user_text"];
-			$sum = $matchingIP["sum"];
-			$query .= "UNION
-				SELECT '$sum' as sum, b.page_title, b.rev_id, b.rev_user_text, UNIX_TIMESTAMP(b.rev_timestamp) as rev_timestamp, b.rev_minor_edit, b.rev_comment, b.page_namespace
-				From(
-				SELECT page_title, rev_id, rev_user_text, rev_timestamp, rev_minor_edit, rev_comment, page_namespace
-				FROM revision_userindex
-				JOIN page ON page_id = rev_page
-				WHERE rev_user_text = '$ip' AND rev_user = '0'
-				ORDER BY rev_user_text ASC, rev_timestamp DESC
-				LIMIT 20
-				) as b
-			\n";
-		}
-		$query = substr($query, 5);
-		
-		$result = $dbr->query( $query );
-	
-		if( count($result->endArray) == 0 ) { return null; }
-		
-		$c = 0;
-		$list = "";
-		$oldip = "";
-		$seccount = 0;
-		foreach ( $result->endArray as $row ){
 
-			if( $c >= $limit ) { $continue = $row['rev_timestamp'];break; }
-			if( isset( $_GET['continue'] ) && $_GET['continue'] < $row['rev_timestamp'] ) continue;
-			
-			$tmp1 = substr( RangecontribsBase::addZero( decbin( ip2long( $row['rev_user_text'] ) ) ), 0, $cidr_info['suffix'] );
-			$tmp2 = $cidr_info['shortened'];
-
-#			if( $tmp1 !== $tmp2 ) { continue; }
-
-			$title = $namespaces[$row['page_namespace']].$row['page_title'];
-			$urltitle = $namespaces[$row['page_namespace']].urlencode($row['page_title']);
-			$date = date('H:i, d.m.Y ', $row['rev_timestamp']);
-
-			//create a new header if namespace changes
-			if( $oldip != $row['rev_user_text'] ){
-			
-				$list .= "<tr ><td colspan=8 ><h3 id='".$row['rev_user_text']."' style='margin:15 0 5 0;'>";
-				$list .= '<a href="//'.$wikibase.'/wiki/User:'.$row['rev_user_text'].'" >'.$row['rev_user_text'].'</a>';
-				$list .= ' (<a href="//'.$wikibase.'/wiki/User_talk:'.$row['rev_user_text'].'" title="User talk:'.$row['rev_user_text'].'">talk</a>)';
-				$list .= ' <span style="font-weight:normal"> &middot; total: '.$row["sum"].'</span>';
-				$list .= '</h3></td></tr>';
-				
-				$oldip = $row['rev_user_text'];
-				$seccount = 0;
-			}
-			
-			$list .= "<tr>";
-			$list .= "<td>&nbsp;&nbsp;&nbsp;</td>";
-			$list .= '<td style="font-size:95%; white-space:nowrap;">'.$date.' &middot; </td> ';
-			$list .= '<td>(<a href="//'.$wikibase.'/w/index.php?title='.$urltitle.'&amp;diff=prev&amp;oldid='.urlencode($row['rev_id']).'" title="'.$title.'">diff</a>)</td>';
-			$list .= '<td>(<a href="//'.$wikibase.'/w/index.php?title='.$urltitle.'&amp;action=history" title="'.$title.'">hist</a>)</td>';
-#			if( $row['rev_minor_edit'] == '1' ) { $list .= '<span class="minor">m</span>'; }
-			$list .= '<td> &middot; <a href="//'.$wikibase.'/wiki/'.$urltitle.'" title="'.$title.'">'.$title.'</a>‎ ('.$row['rev_comment'].')</td> ';
-			$list .= "</tr>";
-
-			$seccount++;
-			if ( $seccount == 20 && $row["sum"] > 20 ){
-				$list .= '<tr><td colspan=5 style="text-align:center; font-weight:bolder ">MORE</td></tr>';
-			}
-			
-			$c++;
-		}
-
-		return $list;
-	}
 	
 	public function calcCIDR( $cidr ) {
-		$cidr = explode('/', $cidr);
+
+		$cidr = explode("/", $cidr);
 	
 		$cidr_base = $cidr[0];
 		$cidr_range = $cidr[1];
-	
+
 		$cidr_base_bin = self::addZero( decbin( ip2long( $cidr_base ) ) );
 #		$cidr_base_bin = self::ip2bin( $cidr_base );
 	
@@ -242,56 +295,71 @@ class RangecontribsBase{
 			);
 	}
 	
-	// from ipcalc, maybe outdated
-	function calcRange2( $iparray ) {
-		print_r($iparray);
-		$iparray = array_unique($iparray);
-		$iparray = array_map("ip2long",$iparray[0]);
-		sort($iparray);
-		$iparray = array_map("long2ip",$iparray);
+	public function findMatch( $ip1, $ip2 ) {
+		$ip1 = str_split( $ip1, 1 );
+		$ip2 = str_split( $ip2, 1 );
+			
+		$match = null;
+		foreach ( $ip1 as $val => $char ) {
+			if( $char != $ip2[$val] ) break;
 	
-		$ip_begin = $iparray[0];
-		$ip_end = $iparray[ count($iparray) - 1 ];
-	
-		$ip_begin_bin = self::ip2bin( $ip_begin );
-		$ip_end_bin = self::ip2bin( $ip_end );
-	
-		$ip_shortened = self::findMatch( implode( '', $ip_begin_bin ), implode( '', $ip_end_bin ) );
-		$cidr_range = strlen( $ip_shortened );
-		$cidr_difference = 32 - $cidr_range;
-	
-		$cidr_begin = $ip_shortened . str_repeat( '0', $cidr_difference );
-		$cidr_end = $ip_shortened . str_repeat( '1', $cidr_difference );
-	
-		$ip_count = bindec( $cidr_end ) - bindec( $cidr_begin ) + 1;
-	
-		$ips = array();
-		foreach( $iparray as $ip ) {
-			$ips[] = array(
-					'ip' => $ip,
-					'bin' => implode( '.', self::ip2bin( $ip ) ),
-					'rdns' => gethostbyaddr( $ip ),
-					'long' => ip2long( $ip ),
-					'hex' => implode( '.', self::ip2hex( $ip ) ),
-					'octal' => implode( '.', self::ip2oct( $ip ) ),
-					'radians' => implode( '/', self::ip2rad( $ip ) ),
-					'base64' => implode( '.', self::ip264( $ip ) ),
-					'alpha' => implode( '.', self::ip2alpha( $ip ) ),
-			);
+			$match .= $char;
 		}
-	
-		usort( $ips, array( 'IPCalc', 'ipsort' ) );
-	
-		$tmp = self::calcCIDR( $ip_begin . '/' . $cidr_range );
-	
-		return array(
-				'begin' => $tmp['begin'],
-				'end' => $tmp['end'],
-				'count' => $tmp['count'],
-				'suffix' => $cidr_range,
-				'ips' => $ips
-		);
+			
+		return $match;
 	}
+	
+	
+	// from ipcalc, maybe outdated
+// 	function calcRange2( $iparray ) {
+// 		print_r($iparray);
+// 		$iparray = array_unique($iparray);
+// 		$iparray = array_map("ip2long",$iparray[0]);
+// 		sort($iparray);
+// 		$iparray = array_map("long2ip",$iparray);
+	
+// 		$ip_begin = $iparray[0];
+// 		$ip_end = $iparray[ count($iparray) - 1 ];
+	
+// 		$ip_begin_bin = self::ip2bin( $ip_begin );
+// 		$ip_end_bin = self::ip2bin( $ip_end );
+	
+// 		$ip_shortened = self::findMatch( implode( '', $ip_begin_bin ), implode( '', $ip_end_bin ) );
+// 		$cidr_range = strlen( $ip_shortened );
+// 		$cidr_difference = 32 - $cidr_range;
+	
+// 		$cidr_begin = $ip_shortened . str_repeat( '0', $cidr_difference );
+// 		$cidr_end = $ip_shortened . str_repeat( '1', $cidr_difference );
+	
+// 		$ip_count = bindec( $cidr_end ) - bindec( $cidr_begin ) + 1;
+	
+// 		$ips = array();
+// 		foreach( $iparray as $ip ) {
+// 			$ips[] = array(
+// 					'ip' => $ip,
+// 					'bin' => implode( '.', self::ip2bin( $ip ) ),
+// 					'rdns' => gethostbyaddr( $ip ),
+// 					'long' => ip2long( $ip ),
+// 					'hex' => implode( '.', self::ip2hex( $ip ) ),
+// 					'octal' => implode( '.', self::ip2oct( $ip ) ),
+// 					'radians' => implode( '/', self::ip2rad( $ip ) ),
+// 					'base64' => implode( '.', self::ip264( $ip ) ),
+// 					'alpha' => implode( '.', self::ip2alpha( $ip ) ),
+// 			);
+// 		}
+	
+// 		usort( $ips, array( 'IPCalc', 'ipsort' ) );
+	
+// 		$tmp = self::calcCIDR( $ip_begin . '/' . $cidr_range );
+	
+// 		return array(
+// 				'begin' => $tmp['begin'],
+// 				'end' => $tmp['end'],
+// 				'count' => $tmp['count'],
+// 				'suffix' => $cidr_range,
+// 				'ips' => $ips
+// 		);
+// 	}
 	
 	public function addZero ( $string ) {
 		$count = 32 - strlen( $string );
@@ -321,19 +389,7 @@ class RangecontribsBase{
 		return $string;
 	}
 	
-	public function findMatch( $ip1, $ip2 ) {
-		$ip1 = str_split( $ip1, 1 );
-		$ip2 = str_split( $ip2, 1 );
-		 
-		$match = null;
-		foreach ( $ip1 as $val => $char ) {
-			if( $char != $ip2[$val] ) break;
 	
-			$match .= $char;
-		}
-		 
-		return $match;
-	}
 
 	
 	
@@ -401,4 +457,60 @@ class RangecontribsBase{
 		return $tmp;
 	}
 
+//unfinished code
+	function ipCalculator(){
+		//Start the calculation
+		if( $type == 'range' ) {
+			$cidr_info = $base->calcCIDR( $cidr );
+		}
+		elseif( $type == 'list' ) {
+			#preg_match_all( '/((((25[0-5]|2[0-4][0-9])|([0-1]?[0-9]?[0-9]))\.){3}((25[0-5]|2[0-4][0-9])|([0-1]?[0-9]?[0-9])){1})/', $cidr, $m );
+		
+			$m = array("142.10.14.28","148.69.145.3");
+			$cidr_info = $base->calcRange( $m );
+			print_r($cidr_info);
+			$ips = array();
+		
+			foreach( $cidr_info['ips'] as $ip ) {
+				$tmp = "<h3>{$ip['ip']}</h3>";
+		
+				$tmp .= "<ul>";/*'bin' => implode( '.', self::ip2bin( $ip ) ),
+				'rdns' => gethostbyaddr( $ip ),
+				'long' => ip2long( $ip ),
+				'hex' => implode( '.', self::ip2hex( $ip ) ),
+				'octal' => implode( '.', self::ip2oct( $ip ) ),
+				'radians' => implode( '.', self::ip2rad( $ip ) ),
+				'base64'*/
+		
+				$tmp .= "<li>Reverse DNS: {$ip['rdns']}</li>";
+				$tmp .= "<li>Network address: {$ip['long']}</li>";
+				$tmp .= "<li>Binary: {$ip['bin']}</li>";
+		
+				if( isset( $_GET['fun'] ) ) {
+					$tmp .= "<li>Hexadecimal: {$ip['hex']}</li>";
+					$tmp .= "<li>Octal: {$ip['octal']}</li>";
+					$tmp .= "<li>Radians: {$ip['radians']}</li>";
+					$tmp .= "<li>Base 64: {$ip['base64']}</li>";
+					$tmp .= "<li>Letters: {$ip['alpha']}</li>";
+				}
+				$tmp .= "<li>More info: " .
+						"<a href=\"//ws.arin.net/whois/?queryinput={$ip['ip']}\">WHOIS</a> · " .
+						"<a href=\"//toolserver.org/~luxo/contributions/contributions.php?user={$ip['ip']}\">Global Contribs</a> · " .
+						"<a href=\"//www.robtex.com/rbls/{$ip['ip']}.html\">RBLs</a> · " .
+						"<a href=\"//www.dnsstuff.com/tools/tracert.ch?ip={$ip['ip']}\">Traceroute</a> · " .
+						"<a href=\"//www.infosniper.net/index.php?ip_address={$ip['ip']}\">Geolocate</a> · " .
+						"<a href=\"//toolserver.org/~overlordq/scripts/checktor.fcgi?ip={$ip['ip']}\">TOR</a> · " .
+						"<a href=\"//www.google.com/search?hl=en&q={$ip['ip']}\">Google</a> · "
+						."</li>";
+		
+				$tmp .= "</ul>";
+		
+				$list = $tmp;
+			}
+		
+		}
+		else {
+			$wt->error = 'Invalid type selected.' ;
+		}
+	}
 }

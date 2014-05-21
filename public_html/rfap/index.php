@@ -12,10 +12,10 @@
 	$wt->assign("lang", "en");
 	$wt->assign("wiki", "wikipedia");
 	
-	$name = $wt->webRequest->getVal( 'name' );
+	$name = $wgRequest->getVal( 'name' );
 
 //Show form if username is not set (or empty)
-	if( !$wt->webRequest->getVal( 'name' ) ) {
+	if( !$wgRequest->getVal( 'name' ) ) {
 		$wt->showPage();
 	}
 //Check if the user is an IP address
@@ -114,7 +114,7 @@
 	
 		$result = $dbr->query( $query );
 	
-		foreach ( $result->endArray as $alternatives ){
+		foreach ( $result as $alternatives ){
 			$output["altnames"][] = $alternatives["altname"];
 		}
 		unset( $result );
@@ -150,7 +150,7 @@
 	
 		$result = $dbr->query( $query );
 	
-		foreach ( $result->endArray as $u => $rfas ) {
+		foreach ( $result as $u => $rfas ) {
 	
 			$myRFA = null;
 			$candidate = "";

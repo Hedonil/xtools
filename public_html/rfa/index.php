@@ -7,14 +7,15 @@
 	$wt->setLimits();
 
 	$pageForm = '
-		<h1>RfA Analysis</h1>
-			<p>This tool identifies duplicate voters in a <a href="//en.wikipedia.org/wiki/Wikipedia:Requests_for_adminship">Request for adminship</a> on the English Wikipedia. This tool can also analyze Requests for bureaucratship pages.</p>
+		<br />
+		<p>This tool identifies duplicate voters in a <a href="//en.wikipedia.org/wiki/Wikipedia:Requests_for_adminship">Request for adminship</a> on the English Wikipedia. This tool can also analyze Requests for bureaucratship pages.</p>
 		<h2>Analyze</h2>
 		<form method="get" action="?" >
 			<strong>RfA page:</strong>&nbsp;
 			<input type="text" name="p" size="50" value="Wikipedia:Requests for adminship/Name of user" />
-			<input type="submit" value="Analyze" />
+			<input type="submit" value="Analyze" />			
 		</form>
+		<br />
 	  ';
 
 	if (isset($_GET['p'])) {

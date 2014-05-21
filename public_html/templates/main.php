@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-	<title><?php echo $wt->toolname ?> - X's tools</title>
+	<title>X's tools</title>
 	<link rel="stylesheet" type="text/css" href="//tools.wmflabs.org/newwebtest/style.css" />
 	<script type="text/javascript" src="//tools.wmflabs.org/newwebtest/sortable.js"></script>
 	<?php echo $wt->moreheader ?>
@@ -17,24 +17,24 @@
 	
 	<div id="content">
 		<div id="navigation" class="center container">
-			<a href="<?php echo $wt->basePath?>/ec">Home</a> &middot; 
+			<a href="//tools.wmflabs.org/supercount/">Supercount</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/ec">Edit counter<sup style="color:green; font-size:70%; position:relative;left:-27px; top:-5px; margin-right:-30px">classic</sup></a> &middot; 
 			<a href="<?php echo $wt->basePath?>/articleinfo/">Page history</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/pages">Pages created</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/autoedits">Automated edits</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/blame">Article blamer</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/rangecontribs">CIDR</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/rangecontribs">Range contribs</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/autoblock">Autoblock</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/rfa">RfX</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/rfap">RfX Vote</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/bash">Random quote</a> &middot;
-			<a href="<?php echo $wt->basePath?>/ipcalc">IP calculator</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/bash">RQ</a> &middot;
+			<a href="<?php echo $wt->basePath?>/sc">SC</a> &middot;
 		</div>
 
 		<div id="alerts">
-			<?php echo ($wt->alert) ? "<h3 class='alert'> $wt->alert </h3>" : "" ?>
-			<?php echo ($wt->error) ? "<h2 class='error'> $wt->error </h2>" : "" ?>
 			<h2><?php echo $wt->title ?></h2>
+			<?php echo ($wt->alert) ? "<h3 class='alert'> $wt->alert </h3>" : "" ?>
+			<?php echo ($wt->error) ? "<div class='alert'> $wt->error </div>" : "" ?>
 		</div>
 		
 		<div id="contentmain">

@@ -5,16 +5,22 @@
 	require_once( 'base.php' );
 	
 //Load WebTool class
-	$wt = new WebTool( 'Pages', 'pages', array( "database", "api") );
-	$wt->setMemLimit();
+	$wt = new WebTool( 'Pages', 'pages', array( "database") );
+	$wt->setLimits();
 	
 	$base = new PagesBase();
 	$wt->content = getPageTemplate( 'form' );
 	$wt->assign("lang", "en");
 	$wt->assign("wiki", "wikipedia");
 	
+	$lang = $wgRequest->getVal('lang');
+	$wiki = $wgRequest->getVal('wiki');
+	$namespace = $wgRequest->getVal('namespace');
+	$redirects = $wgRequest->getVal('redirects'); 
+	
 	$username = $wgRequest->getVal('user');
-	$username = $wgRequest->getBool( 'name' ) ? $wgRequest->getVal( 'name' ) : $username;
+	$username = $wgRequest->getBool('name') ? $wgRequest->getVal('name') : $username;
+	
 
 //Show form if &article parameter is not set (or empty)
 	if( !$username ) {
@@ -22,29 +28,20 @@
 	}
 
 //Get username & userid, quit if not exist
-	$userData = $base->getUserData( $dbr, $user );
-	$userobj = new User( $site, $username );
-print_r($userobj);
-	$username = $userobj->get_username();
+	$userData = $base->getUserData( $dbr, $username );
 	
-	if( !$userData ) { 
+	if( !$userData ) {
 		$wt->error = $I18N->msg("No such user");
 		$wt->showPage();
 	}
+	
 
 //Execute main logic	
-	$result = $base->getCreatedPages( 
-				$dbr, 
-				$userData["user_id"], 
-				$wgRequest->getVal('lang'), 
-				$wgRequest->getVal('wiki'),
-				$wgRequest->getVal('namespace'),
-				$wgRequest->getVal('redirects')
-			 );	
+	$result = $base->getCreatedPages( $dbr, $userData["user_id"], $lang, $wiki, $namespace, $redirects );
 
 //Construct output
 	$filtertextNS = ( $result->filterns == "all" ) ? $I18N->msg('all') : $wgRequest->getVal('namespace');
-	$wikibase = $wgRequest->getVal('lang').".".$wgRequest->getVal('wiki') ;
+	$wikibase = $lang.".".$wiki ;
 	
 	$wt->content = getPageTemplate( 'result' );
 	$wt->assign( "totalcreated", $I18N->msg('user_total_created', array("variables" => array($userData["user_name"], $result->total, $wikibase) ) ) );
@@ -68,7 +65,7 @@ function getPageTemplate( $type ){
 			
 	<form action="?" method="get" accept-charset="utf-8">
 	<table>
-		<tr><td>{#user#}: </td><td><input type="text" name="user" /></td></tr>
+		<tr><td>{#username#}: </td><td><input type="text" name="user" /></td></tr>
 		<tr><td>{#wiki#}: </td><td><input type="text" value="{$lang}" name="lang" size="9" />.<input type="text" value="{$wiki}" size="10" name="wiki" />.org</td></tr>
 		<tr><td>{#namespace#}: </td>
 			<td>

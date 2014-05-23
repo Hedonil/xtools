@@ -62,7 +62,7 @@ $wt->showPage();
 function getPageTemplate( $type ){
 
 	$templateForm = '
-			
+	<br />		
 	<form action="?" method="get" accept-charset="utf-8">
 	<table>
 		<tr><td>{#username#}: </td><td><input type="text" name="user" /></td></tr>

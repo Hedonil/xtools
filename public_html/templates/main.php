@@ -17,10 +17,11 @@
 	
 	<div id="content">
 		<div id="navigation" class="center container">
-			<a href="//tools.wmflabs.org/supercount/">Supercount</a> &middot; 
+			<a href="//tools.wmflabs.org/supercount/">User Analysis Tool</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/ec">Edit counter<sup style="color:green; font-size:70%; position:relative;left:-27px; top:-5px; margin-right:-30px">classic</sup></a> &middot; 
 			<a href="<?php echo $wt->basePath?>/articleinfo/">Page history</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/pages">Pages created</a> &middot; 
+			<a href="<?php echo $wt->basePath?>/pages">Pages created</a> &middot;
+			<a href="<?php echo $wt->basePath?>/topedits">Top edits</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/autoedits">Automated edits</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/blame">Article blamer</a> &middot; 
 			<a href="<?php echo $wt->basePath?>/rangecontribs">Range contribs</a> &middot; 
@@ -32,9 +33,10 @@
 		</div>
 
 		<div id="alerts">
-			<h2><?php echo $wt->title ?></h2>
+			<h2 style="margin-bottom: 0.4em"><?php echo $wt->toolTitle ?><span style="font-size: 75%;font-weight:normal; "> &bull; <?php echo $wt->toolDesc ?></span></h2>
 			<?php echo ($wt->alert) ? "<h3 class='alert'> $wt->alert </h3>" : "" ?>
 			<?php echo ($wt->error) ? "<div class='alert'> $wt->error </div>" : "" ?>
+			<?php echo ($wt->replag) ? "<div class='alert'> $wt->replag </div>" : "" ?>
 		</div>
 		
 		<div id="contentmain">
@@ -67,16 +69,15 @@
 				<sup><a  style="color:green" href="https://webchat.freenode.net/?channels=#wikimedia-labs">WebChat</a></sup>
 			</span>
 			<br />
-			<span>
-				<span><a href="//translatewiki.net/wiki/Special:Translate?group=tsint-supercount&amp;filter=%21translated&amp;action=translate&amp;setlang=<?php echo $wt->uselang?>" >(<?php echo $wt->translate ?>)</a></span>
-				<span style="margin-left:5px"><?php echo $wt->langLinks ?></span>
-			</span>
+			<span><?php echo $wt->langLinks ?></span>
 		</div>
 	</div>
 </div>
 
-<script type="text/javascript">if (window.runOnloadHook) runOnloadHook(); if(window.sortables_init) sortables_init();</script>
+<script type="text/javascript">
+	if (window.runOnloadHook) runOnloadHook(); 
+	if (window.sortables_init) sortables_init();
+</script>
 
 </body>
-
 </html>

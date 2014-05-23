@@ -131,7 +131,7 @@ function makeListByName( $contribs, $namespaces ){
 function getPageTemplate( $type ){
 
 	$templateForm = '
-			
+	<br />		
 	<span>{#rc_usage_0#}</span>
 	<ol>
 	<li>{#rc_usage_1#} 0.0.0.0/0</li>

@@ -76,6 +76,10 @@ class Counter {
 
 	private $logs = array();
 	private $revs = array();
+	
+	private $optinPages = array();
+	public $optin = false;
+	
 	public $wikis = array();
 
 	private $perflog;
@@ -91,17 +95,17 @@ class Counter {
 		$this->mName = $user;
 		
 		$this->getUserInfo( $dbr );
+		$this->checkOptin();
 		
 		if ( !$this->mExists || $noautorun ) return ;
 		
 		$this->fetchData($dbr);
-		
 		$this->parseRevisions();
 		$this->parseLogs();
 		
 #		$this->fillMonthList();
 
-#print_r($this);die;
+
 		global $perflog;
 		array_push( $perflog->stack, $this->perflog);
 	}
@@ -126,11 +130,7 @@ class Counter {
 					'usprop' => 'blockinfo|groups|implicitgroups|editcount|registration',
 					'ususers'=> $this->mName
 				);
-			$query[] = array(
-					"type" => "api",
-					"src" => "",
-					"query" => $this->apibase.http_build_query( $data )
-				);
+			$query[] = array( "type" => "api", "src" => "", "query" => $this->apibase.http_build_query( $data ) );
 			
 			//GEt global suser info
 			$data = array(
@@ -140,11 +140,7 @@ class Counter {
 					'guiprop' => 'groups|rights|merged|unattached|editcount',
 					'guiuser' => $this->mName,
 				);
-			$query[] = array(
-					"type" => "api",
-					"src" => "",
-					"query" => $this->apibase.http_build_query( $data )
-				);
+			$query[] = array( "type" => "api", "src" => "", "query" => $this->apibase.http_build_query( $data ) );
 
 			//Get Namespaces
 			$data = array(
@@ -153,13 +149,33 @@ class Counter {
 					'format' => 'json',
 					'siprop' => 'namespaces',
 				);
-			$query[] = array(
-					"type" => "api",
-					"src" => "",
-					"query" => $this->apibase.http_build_query( $data )
-				);
+			$query[] = array( "type" => "api", "src" => "", "query" => $this->apibase.http_build_query( $data )	);
 			
-						
+			//Get Optin page local
+			$data = array(
+					'action' => 'query',
+					'prop' => 'revisions',
+					'format' => 'json',
+					'rvprop' => 'content',
+					'rvlimit' => '1',
+					'rvdir' => 'older',
+					'titles' => 'User:'.$this->mName.'/EditCounterOptIn.js|User:'.$this->mName.'/EditCounterOptOut.js'
+				);
+			$query[] = array( "type" => "api", "src" => "", "query" => $this->apibase.http_build_query( $data )	);
+			
+			//Get Optin page global meta
+			$data = array(
+					'action' => 'query',
+					'prop' => 'revisions',
+					'format' => 'json',
+					'rvprop' => 'content',
+					'rvlimit' => '1',
+					'rvdir' => 'older',
+					'titles' => 'User:'.$this->mName.'/EditCounterGlobalOptIn.js'
+			);
+			$query[] = array( "type" => "api", "src" => "", "query" => 'http://meta.wikimedia.org/w/api.php?'.http_build_query( $data )	);
+
+			
 			$multires = $dbr->multiquery ($query );
 			
 			
@@ -197,12 +213,17 @@ class Counter {
 			unset($res);
 			
 			$res = $multires[2]->query->namespaces;
-		
+
 			foreach( $res as $id => $ns ) {
 				$nsname = ( $ns->{'*'} == "" ) ? 'Main' : $ns->{'*'};
 				$this->mNamespaces['ids'][$nsname] = $id;
 				$this->mNamespaces['names'][$id] =  $nsname;
 			}
+			
+			$this->optinPages[] = $multires[3]->query->pages ;
+			$this->optinPages[] = $multires[4]->query->pages ;
+			
+#print_r($this->optinPages);			
 		}
 		
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
@@ -511,100 +532,21 @@ class Counter {
 		return $contribs;
 	}
 	
-	
-	function isOptedOut( $http, $user ) {
-		$x = unserialize( $this->http->get( $this->apibase . 'action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterOptOut.js&rvprop=content&format=php' ) );
-	
-		foreach( $x['query']['pages'] as $page ) {
-			if( !isset( $page['revisions'] ) ) {
-	
-				$x = unserialize( $this->http->get( '//meta.wikimedia.org/w/api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterGlobalOptOut.js&rvprop=content&format=php' ) );
-				foreach( $x['query']['pages'] as $page ) {
-					if( !isset( $page['revisions'] ) ) {
-						$x = unserialize( $this->http->get( $this->baseurl . 'api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/Editcounter&rvprop=content&format=php' ) );
-						foreach( $x['query']['pages'] as $page ) {
-							if( !isset( $page['revisions'] ) ) {
-								return false;
-							}
-							elseif( strpos( $page['revisions'][0]['*'], "Month-Graph:no" ) !== FALSE ) {
-								return true;
-							}
-						}
-					}
-					elseif( $page['revisions'][0]['*'] != "" ) {
-						return true;
-					}
+	function checkOptin(){
+		foreach ($this->optinPages as $site ){
+			foreach ($site as $optinPage) {
+				if ( strpos ($optinPage->title, "OptOut.js") && isset($optinPage->pageid) ){
+					$this->optin = false;
+					break(2);
 				}
-			}
-			elseif( $page['revisions'][0]['*'] != "" ) {
-				return true;
+				if ( strpos ($optinPage->title, "OptIn.js") && isset($optinPage->pageid) ){
+					$this->optin = true;
+					break(2);
+				}
 			}
 		}
 	}
 	
-	function isOptedIn( $user ) {
-		$x = unserialize( $this->http->get( $this->apibase . 'action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterOptIn.js&rvprop=content&format=php' ) );
-	
-		foreach( $x['query']['pages'] as $page ) {
-			if( !isset( $page['revisions'] ) ) {
-	
-				$x = unserialize( $this->http->get( 'http://meta.wikimedia.org/w/api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterGlobalOptIn.js&rvprop=content&format=php' ) );
-				foreach( $x['query']['pages'] as $page ) {
-					if( !isset( $page['revisions'] ) ) {
-						$x = unserialize( $this->http->get( $this->baseurl . 'api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/Editcounter&rvprop=content&format=php' ) );
-						foreach( $x['query']['pages'] as $page ) {
-							if( !isset( $page['revisions'] ) ) {
-								return false;
-							}
-							elseif( strpos( $page['revisions'][0]['*'], "Month-Graph:yes" ) !== FALSE ) {
-								return true;
-							}
-						}
-					}
-					elseif( $page['revisions'][0]['*'] != "" ) {
-						return true;
-					}
-				}
-			}
-			elseif( $page['revisions'][0]['*'] != "" ) {
-				return true;
-			}
-		}
-	
-		return false;
-	}
-	
-	function getWhichOptIn( $user ) {
-		$x = unserialize( $this->http->get( $this->baseurl . 'api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterOptIn.js&rvprop=content&format=php' ) );
-	
-		foreach( $x['query']['pages'] as $page ) {
-			if( !isset( $page['revisions'] ) ) {
-	
-				$x = unserialize( $this->http->get( 'http://meta.wikimedia.org/w/api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/EditCounterGlobalOptIn.js&rvprop=content&format=php' ) );
-				foreach( $x['query']['pages'] as $page ) {
-					if( !isset( $page['revisions'] ) ) {
-						$x = unserialize( $this->http->get( $this->baseurl . 'api.php?action=query&prop=revisions&titles=User:'.urlencode($user).'/Editcounter&rvprop=content&format=php' ) );
-						foreach( $x['query']['pages'] as $page ) {
-							if( !isset( $page['revisions'] ) ) {
-								return "false";
-							}
-							elseif( strpos( $page['revisions'][0]['*'], "Month-Graph:yes" ) !== FALSE ) {
-								return "interiot";
-							}
-						}
-					}
-					elseif( $page['revisions'][0]['*'] != "" ) {
-						return "globally";
-					}
-				}
-			}
-			elseif( $page['revisions'][0]['*'] != "" ) {
-				return "locally";
-			}
-		}
-	
-		return "false";
-	}
 	
 	function getNamespaces(){
 		return $this->mNamespaces;
@@ -751,7 +693,7 @@ class Counter {
 						'type' => 'LIKE', 
 						'query' => '%Wikipedia:Tools/Navigation_popups%',
 						'regex' => '/.*Wikipedia:Tools\/Navigation_popups.*/',
-						'shortcut' => 'Wikipedia:Tools/Navigation_popups' 
+						'shortcut' => 'WP:POP' 
 					),
 				
 				'MWT' => array( 
@@ -774,7 +716,7 @@ class Counter {
 						'url' => '',
 						'type' => 'LIKE', 
 						'query' => 'Reverted % edit% by % (%) to last revision by %',
-						'regex' => '^Reverted.*edit.*by .* \(.*\) to last revision by .*/',
+						'regex' => '/^Reverted.*edit.*by .* \(.*\) to last revision by .*/',
 						'shortcut' => 'User:Gracenotes/amelvand.js' 
 					),
 				

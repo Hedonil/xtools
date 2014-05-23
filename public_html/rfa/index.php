@@ -3,39 +3,96 @@
 //Requires
 	require_once( '../WebTool.php' );
 
-	$wt = new WebTool( 'RfX Analysis', 'rfa', array( 'api' ) );
+	$wt = new WebTool( 'RfX Analysis', 'rfa', array() );
 	$wt->setLimits();
 
-	$pageForm = '
-		<br />
-		<p>This tool identifies duplicate voters in a <a href="//en.wikipedia.org/wiki/Wikipedia:Requests_for_adminship">Request for adminship</a> on the English Wikipedia. This tool can also analyze Requests for bureaucratship pages.</p>
-		<h2>Analyze</h2>
-		<form method="get" action="?" >
-			<strong>RfA page:</strong>&nbsp;
-			<input type="text" name="p" size="50" value="Wikipedia:Requests for adminship/Name of user" />
-			<input type="submit" value="Analyze" />			
-		</form>
-		<br />
-	  ';
+	$wt->content = getPageTemplate( 'form' );
+	$input_default = 'Wikipedia:Requests for adminship/Name of user';
+	$wt->assign( 'input_default', $input_default );
+	$wt->assign( 'recentrfx', getRecentRfXs() );
+	
+	$p1 = $wgRequest->getVal( 'p' );
+	$p2 = $wgRequest->getVal( 'p2');
+	$page = ( $p2 ) ? $p2 : $p1;
+	
 
-	if (isset($_GET['p'])) {
-		$targetpage = str_replace(' ','_',$_GET['p']);
-		$targetpage = explode('?',$_GET['p']);
-		$getpage = $targetpage[0];
-		
-		$wt->content = getRfaResults( $getpage );
+	if( !$page || $page == $input_default ){
+		$wt->showPage();
 	}
-	else{
-		$wt->content = $pageForm;
+
+	$page = str_replace(' ', '_', $page);
+	$page = preg_replace('/^(Wikipedia:)/', '', $page);
+	$page = 'Wikipedia:'.$page;
+
+print_r($page);	
+	
+//Create an RFA object & analyze
+	$site = $wt->loadPeachy( 'en', 'wikipedia' );
+	$myRFA = new RFA( $site, $page );
+
+	$wt->content = getRfaResults( $myRFA, $page );
+
+$wt->content = "<div style='width:75%; margin-left:100px' >". $wt->content ."</div>";
+$wt->showPage();
+
+
+function getRecentRfXs(){
+	global $wt, $redis;
+	
+	$dbr = $wt->loadDatabase( 'en', 'wikipedia' );
+	
+	$queryA ="
+			SELECT 'rfa' as type, page_title
+			FROM page 
+			WHERE page_namespace = '4'
+			AND page_title LIKE 'Requests_for_adminship/%'
+			AND page_title != 'Requests_for_adminship/RfA_and_RfB_Report'
+			AND page_title != 'Requests_for_adminship/BAG'
+			AND page_title NOT LIKE 'Requests_for_adminship/Nomination_cabal%'
+			AND page_title != 'Requests_for_adminship/Front_matter'
+			AND page_title != 'Requests_for_adminship/RfB_bar'
+			AND page_title NOT LIKE 'Requests_for_adminship/%/%'
+			AND page_title != 'Requests_for_adminship/nominate'
+			AND page_title != 'Requests_for_adminship/desysop_poll'
+			AND page_title != 'Requests_for_adminship/Draft'
+			AND page_title != 'Requests_for_adminship/'
+			AND page_title != 'Requests_for_adminship/Sample_Vote_on_sub-page_for_User:Jimbo_Wales'
+			AND page_title != 'Requests_for_adminship/Promotion_guidelines'
+			AND page_title != 'Wikipedia:Requests_for_adminship/Standards'
+			ORDER BY page_id DESC
+			LIMIT 100
+		";		
+	$queryB = "
+			SELECT 'rfb' as type, page_title
+			FROM page
+			WHERE page_namespace = '4'
+			AND page_title LIKE 'Requests_for_bureaucratship/%'
+			AND page_title NOT LIKE 'Requests_for_bureaucratship/%/Bureaucrat_discussion'
+			AND page_title != 'Requests_for_bureaucratship/Wikipedia:Requests_for_adminship'
+			AND page_title != 'Requests_for_bureaucratship/Candidate_questions'
+			ORDER BY page_id DESC
+			Limit 100;
+		";
+	
+	$res = $dbr->query( $queryA );
+	$list = '<optgroup label="Requests for Adminship" >';
+	foreach ($res as $i => $page ){
+		$list .= '<option value="'.$page["page_title"].'" >'.$page["page_title"].'</option>';
 	}
-	$wt->content = "<div style='width:75%; margin-left:100px' >". $wt->content ."</div>";
-	$wt->showPage();
-
-
-
+	$list .= '</optgroup>';
+	
+	$res = $dbr->query( $queryB );
+	$list .= '<optgroup label="Requests for Bureaucratship" >';
+	foreach ($res as $i => $page ){
+		$list .= '<option value="'.$page["page_title"].'" >'.$page["page_title"].'</option>';
+	}
+	$list .= '</optgroup>';
+	
+	$dbr->close();
+	return $list;
+}
     
-function getRfaResults( $getpage ){
-	global $site;
+function getRfaResults( $myRFA, $getpage ){
 	
 	$result = "<h2>Voters for <a href=\"//en.wikipedia.org/wiki/{$getpage}\">{$getpage}</a></h2>";
 
@@ -45,8 +102,7 @@ function getRfaResults( $getpage ){
         return $result;
     }
 
-    //Create an RFA object & analyze
-    $myRFA = new RFA( $site, $getpage );
+    
 
     $enddate = $myRFA->get_enddate();
     $tally = count( $myRFA->get_support() ).'/'.count( $myRFA->get_oppose() ).'/'.count( $myRFA->get_neutral() );
@@ -113,4 +169,28 @@ function get_h_l( $var, $searchlist ) {
 }
 
 
+/**************************************** templates ****************************************
+ *
+*/
+function getPageTemplate( $type ){
 
+	$templateForm = '
+	<br />
+	<p>This tool identifies duplicate voters in a <a href="//en.wikipedia.org/wiki/Wikipedia:Requests_for_adminship">Request for adminship</a> on the English Wikipedia. <br />This tool can also analyze Requests for bureaucratship pages.</p>
+	<form method="get" action="?" >
+		<table>
+			<tr><td>RfX page:&nbsp;</td><td><input type="text" name="p" size="50" value="{$input_default}" /></td></tr>
+			<tr><td>or: </td><td>
+				<select name="p2"> 
+				<option value="" >Select from most recent RfA\'s / RfB\'s</option>
+				{$recentrfx}
+				</select></td></tr>
+			<tr><td colspan=2><input type="submit" value="Analyze" /></td></tr>
+		</table>
+	</form>
+	<br />
+	';
+	
+	if( $type == "form" ) { return $templateForm; }
+	if( $type == "result" ) { return $templateResult; }
+}

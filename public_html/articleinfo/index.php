@@ -18,9 +18,10 @@
 	$endtime = $wgRequest->getVal( 'end' );
 	$nofollow = !$wgRequest->getBool( 'nofollowredir');
 	
-	$lang = $wgRequest->getVal( "lang");
-	$wiki = $wgRequest->getVal( "wiki");
-	$url = $lang.".".$wiki;
+	$wi = $wt->getWikiInfo();
+		$lang = $wi->lang;
+		$wiki = $wi->wiki;
+		$domain = $wi->domain;
 
 //Show form if &article parameter is not set (or empty)
 	if( !$wgRequest->getVal( 'article' ) ) {
@@ -31,7 +32,19 @@
 //Start dbr, site = global Objects init in WebTool
 	$site = $wt->loadPeachy( $lang, $wiki );
 	$dbr = $wt->loadDatabase( $lang, $wiki );
-	$ai = new ArticleInfo( $dbr, $site, $article, $begintime, $endtime, $nofollow );
+	
+	$ttl = 120;
+	$hash = "article3".hash( "crc32", $lang.$wiki.$article.$begintime.$endtime.$nofollow );
+	$lc = $redis->get($hash);
+	if (!$lc){
+		$ai = new ArticleInfo( $dbr, $site, $article, $begintime, $endtime, $nofollow );
+		$redis->setex( $hash, $ttl, serialize($ai) );
+	}
+	else{
+		$ai = unserialize($lc);
+		unset($lc);
+	}
+	
 	
 	if( $ai->historyCount == 0 ) {
 		$wt->toDie( 'norevisions', $article ); 
@@ -49,6 +62,7 @@
 	$wt->assign( 'pageid', $ai->pageid );
 	$wt->assign( "totaledits", $wt->numFmt( $ai->data['count'] ) );
 	$wt->assign( "editorcount", $wt->numFmt( $ai->data['editor_count'] ) );
+	$wt->assign( "cursize", $wt->numFmt( $ai->data['current_size'] ) );
 	$wt->assign( "minoredits", $wt->numFmt( $ai->data['minor_count'] ) );
 	$wt->assign( "minoredits", $wt->numFmt( $ai->data['minor_count'] ) );
 	$wt->assign( "anonedits", $wt->numFmt( $ai->data['anon_count'] ) );
@@ -56,9 +70,20 @@
 	$wt->assign( "anonpct", $wt->numFmt( ( $ai->data['anon_count'] / $ai->data['count'] ) * 100, 1 ) );
 	$wt->assign( "autoedits", $wt->numFmt( ( $ai->data['automated_count']) ) );
 	$wt->assign( "autoeditspct", $wt->numFmt( ( $ai->data['automated_count'] / $ai->data['count'] ) * 100, 1 ) );
-	$wt->assign( "firstedit", date( 'd F Y, H:i:s', strtotime( $ai->data['first_edit']['timestamp'] ) ) );
+	$wt->assign( "firstedit", $wt->dateFmt( date('Y-m-d H:i:s', strtotime($ai->data['first_edit']['timestamp']) ) ) );
 	$wt->assign( "firstuser", $ai->data['first_edit']['user'] );
-	$wt->assign( "lastedit", date( 'd F Y, H:i:s', strtotime( $ai->data['last_edit'] ) ) );
+	$wt->assign( "latestedit", $wt->dateFmt( date( 'Y-m-d H:i:s', strtotime( $ai->data['last_edit']['timestamp'] ) ) ) );
+	$wt->assign( "latestuser", $ai->data['last_edit']['user'] );
+
+	$wt->assign( "maxadd", $wt->dateFmt( date( 'Y-m-d H:i:s', strtotime( $ai->data['max_add']['timestamp'] ) ) ) );
+	$wt->assign( "maxadduser", $ai->data['max_add']['user'] );
+	$wt->assign( "maxaddnum", $wt->numFmt($ai->data['max_add']['size'] ) );
+	$wt->assign( "maxadddiff", $ai->data['max_add']['revid'] );
+	$wt->assign( "maxdel", $wt->dateFmt( date( 'Y-m-d H:i:s', strtotime( $ai->data['max_del']['timestamp'] ) ) ) );
+	$wt->assign( "maxdeluser", $ai->data['max_del']['user'] );
+	$wt->assign( "maxdelnum", $wt->numFmt($ai->data['max_del']['size'] ) );
+	$wt->assign( "maxdeldiff", $ai->data['max_del']['revid'] );
+	
 	$wt->assign( "timebwedits", $wt->numFmt($ai->data['average_days_per_edit'] ),1 );
 	$wt->assign( "editspermonth", $wt->numFmt($ai->data['edits_per_month'] ), 1);
 	$wt->assign( "editsperyear", $wt->numFmt($ai->data['edits_per_year'] ), 1);
@@ -66,63 +91,74 @@
 	$wt->assign( "lastweek", $wt->numFmt( $ai->data['count_history']['week'] ) );
 	$wt->assign( "lastmonth", $wt->numFmt( $ai->data['count_history']['month'] ) );
 	$wt->assign( "lastyear", $wt->numFmt( $ai->data['count_history']['year'] ) );
-	$wt->assign( "editsperuser", $ai->data['edits_per_editor'] );
+	$wt->assign( "editsperuser", $wt->numFmt( $ai->data['edits_per_editor'],1 ));
 	$wt->assign( "toptencount", $wt->numFmt( $ai->data['top_ten']['count'] ) );
 	$wt->assign( "toptenpct", $wt->numFmt( ( $ai->data['top_ten']['count'] / $ai->data['count'] ) * 100, 1 ) );
-
-	$wt->assign( "graphanonpct", number_format( ( $ai->data['anon_count'] / $ai->data['count'] ) * 100, 1 ) );
-	$wt->assign( "graphuserpct", number_format( 100 - ( ( $ai->data['anon_count'] / $ai->data['count'] ) * 100 ), 1 ) );
-	$wt->assign( "graphminorpct", number_format( ( $ai->data['minor_count'] / $ai->data['count'] ) * 100, 1 ) );
-	$wt->assign( "graphmajorpct", number_format( 100 - ( ( $ai->data['minor_count'] / $ai->data['count'] ) * 100 ), 1 ) );
-	$wt->assign( "graphtoptenpct", number_format( ( $ai->data['top_ten']['count'] / $ai->data['count'] ) * 100, 1 ) );
-	$wt->assign( "graphbottomninetypct", number_format( 100 - ( ( $ai->data['top_ten']['count'] / $ai->data['count'] ) * 100 ), 1 ) );
 
 	$wt->assign( "wikidata", $ai->wikidatalink );
 	$wt->assign( "totalauto", $ai->data["automated_count"] );
 
 	
 //Colors
-	$pixelcolors = array( 'all' => '4D89F9', 'anon' => '55FF55', 'minor' => 'ff00ff' );
+	$pixelcolors = array( 
+				'all' => '3399FF', 
+				'anon' => '66CC00', // 55FF55', 
+				'minor' => 'cc9999',
+				'size' => '999999'
+			);
 	$wt->assign( "pixelcolors", $pixelcolors );
-		
-//Year counts table
-	$yearpixels = $ai->getYearPixels();
+
+//make minicharts
+	$graphanonpct = number_format( ( $ai->data['anon_count'] / $ai->data['count'] ) * 100, 1 );
+	$graphuserpct = number_format( 100 - $graphanonpct, 1 );
+	$graphminorpct = number_format( ( $ai->data['minor_count'] / $ai->data['count'] ) * 100, 1 );
+	$graphmajorpct = number_format( 100 - $graphminorpct, 1 );
+	$graphtoptenpct = number_format( ( $ai->data['top_ten']['count'] / $ai->data['count'] ) * 100, 1 );
+	$graphbottomninetypct = number_format( 100 - $graphtoptenpct, 1 );
+	
+	$gcolor1 = '99CCFF';
+	$gcolor2 = '99CC00';
+	$graphuser = "<img src=\"//chart.googleapis.com/chart?cht=p&amp;chd=t:$graphuserpct,$graphanonpct&amp;chs=280x100&amp;chdl={#users#}%20%28$graphuserpct%%29|{#ips#}%20%28$graphanonpct%%29&amp;chco=$gcolor1|$gcolor2&amp;chf=bg,s,00000000 \" alt=\"{#anonalt#} \" />";
+	$graphminor = "<img src=\"//chart.googleapis.com/chart?cht=p&amp;chd=t:$graphminorpct,$graphmajorpct&amp;chs=280x100&amp;chdl={#minor#}%20%28$graphminorpct%%29|{#major#}%20%28$graphmajorpct%%29&amp;chco=$gcolor1|$gcolor2&amp;chf=bg,s,00000000 \" alt=\"{#minoralt#} \" />";
+	$graphtopten = "<img src=\"//chart.googleapis.com/chart?cht=p&amp;chd=t:$graphtoptenpct,$graphbottomninetypct&amp;chs=280x100&amp;chdl={#topten#}%20%28$graphtoptenpct%%29|{#bottomninety#}%20%28$graphbottomninetypct%%29&amp;chco=$gcolor1|$gcolor2&amp;chf=bg,s,00000000 \" alt=\"{#toptenalt#}\" />";
+	$wt->assign( 'graphuser', $graphuser );
+	$wt->assign( 'graphminor', $graphminor );
+	$wt->assign( 'graphtopten', $graphtopten );
+	
+
+//Year counts 
+	//$yearpixels = $ai->getYearPixels();
+	$chartImgYears = xGraph::makeChartArticle("year", $ai->data['year_count'], $ai->pageLogs["years"], $pixelcolors );
+	$wt->assign('chartImgYears', "<img src='$chartImgYears' alt='bla' />" );
 	
 	$list = '
 		<tr>
 		<th>{#year#}</th>
-		<th>{#count#}</th>
-		<th>{#ips#}</th>
-		<th>{#ips#} %</th>
-		<th>{#minor#}</th>
-		<th>{#minor#} %</th>
-		<th>
-			<span class=legendicon style="background-color:#'.$pixelcolors["all"].'"> </span> {#alledits#} &nbsp;&bull;&nbsp; 
-			<span class=legendicon style="background-color:#'.$pixelcolors["anon"].'"> </span> {#ips#} &nbsp;&bull;&nbsp; 
-			<span class=legendicon style="background-color:#'.$pixelcolors["minor"].'"> </span> {#minor#} 
-		</th>
+		<th><span class=legendicon style="background-color:#'.$pixelcolors["all"].'"> </span> {#all#}</th>
+		<th><span class=legendicon style="background-color:#'.$pixelcolors["anon"].'"> </span> {#ips#}</th>
+		<th><span class=legendicon style="background-color:#'.$pixelcolors["anon"].'"> </span> {#ips#} %</th>
+		<th><span class=legendicon style="background-color:#'.$pixelcolors["minor"].'"> </span> {#minor#}</th>
+		<th><span class=legendicon style="background-color:#'.$pixelcolors["minor"].'"> </span> {#minor#} %</th>
+		<th><span class=legendicon style="background-color:#'.$pixelcolors["minor"].'"> </span> {#events#} %</th>
 		</tr>
 	  ';
-	foreach ( $ai->data['year_count'] as $key => $val ){
+	foreach ( $ai->data['year_count'] as $year => $val ){
 		$list .= '
 			<tr>
-			<td class=date >'.$key.'</td>
+			<td class=date >'.$year.'</td>
 			<td class=tdnum >'.$val["all"].'</td>
 			<td class=tdnum >'.$val["anon"].'</td>
 			<td class=tdnum >'.$wt->numFmt( $val["pcts"]["anon"],1 ).'%</td>
 			<td class=tdnum >'.$val["minor"].'</td>
 			<td class=tdnum >'.$wt->numFmt( $val["pcts"]["minor"],1 ).'%</td>
-			<td>
-	 	';
-		if ( $val["all"] != 0 ){
-			$list .= '
-			<div class="bar" style="height:40%;background-color:#'.$pixelcolors["all"].';width:'.$yearpixels[$key]["all"].'px;"></div>
-			<div class="bar" style="height:30%;border-left:'.$yearpixels[$key]["anon"].'px solid #'.$pixelcolors["anon"].'"></div>
-			<div class="bar" style="height:30%;border-left:'.$yearpixels[$key]["minor"].'px solid #'.$pixelcolors["minor"].'"></div>
-		  ';
-		}
-	
-		$list .= '</td></tr>';
+		';
+			$actions = "";
+			ksort($ai->pageLogs["years"][ $year ]);
+			foreach ( $ai->pageLogs["years"][ $year ] as $logaction => $count ){
+				$actions[] = "$logaction: $count";
+			}
+			$list .= "<td>".implode(" &middot; ", $actions)."</td>";
+		$list .= '</tr>';
 	}
 	$wt->assign( "yearcountlist", $list);
 	unset( $list, $yearpixels );
@@ -175,33 +211,32 @@
 	$wt->assign( "monthcountlist", $list);
 	unset( $list, $monthpixels );
 
-	$chartImgMonth = xGraph::makeArticleChartGoogle("month", $ai->data['year_count'] );
-	$wt->assign('chartImgMonth', "<img src='$chartImgMonth' alt='bla' />" );
-
-
+	
 //usertable	
 	$list = '';
 	foreach( $ai->data['editors'] as $user => $info ){
 		if ( $wt->iin_array( $user, $ai->data['top_fifty'] ) ){
 			$list .= '
 			<tr>
-			<td class="date"><a href="//{$url}/wiki/User:'.$info["urlencoded"].'" >'.$user.'</a></td>
+			<td><a href="//{$domain}/wiki/User:'.$info["urlencoded"].'" >'.$user.'</a></td>
 			<td> <a title="edit count" href="../ec/?user='.$info["urlencoded"].'&amp;lang='.$lang.'&amp;wiki='.$wiki.'" >ec</a></td>
 			<td class=tdnum >'.$info["all"].'</td>
 			<td class=tdnum >'.$info["minor"].'</td>
 			<td class=tdnum >'.$wt->numFmt( $info["minorpct"],1 ).'%</td>
 			<td>'.$info["first"].'</td>
 			<td>'.$info["last"].'</td>
-			<td class=tdnum >'.$wt->numFmt( $info["atbe"],1 ).' {#days#}</td>
-			<td class=tdnum >'.$info["size"].' KB</td>
+			<td class=tdnum >'.$wt->numFmt( $info["atbe"],1 ).'</td>
+			<td class=tdnum >'.$wt->numFmt( $ai->data["textshares"][$user]["all"]).'</td>
 			</tr>
 			';
 		}					
 	}
+#<td class=tdnum >'.$info["size"].' KB</td>
 	$wt->assign( "usertable", $list );
-	$chartImgTopEditor = xGraph::makePieGoogleTopEditors( $ai->data["count"], $ai->data["editors"] );
-	$wt->assign( 'chartTopEditors', "<img src='$chartImgTopEditor' alt='bla' />" );
-
+	$chartImgTopEditors = xGraph::makePieTopEditors( "Top 10 by Editcount", $ai->data["count"], $ai->data["editors"] );
+	$wt->assign( 'chartTopEditorsByCount', "<img src='$chartImgTopEditors' alt='bla' />" );
+	$chartImgTopEditors = xGraph::makePieTopEditors( "Top 10 by text share", $ai->data["textshare_total"], $ai->data["textshares"] );
+	$wt->assign( 'chartTopEditorsByText', "<img src='$chartImgTopEditors' alt='bla' />" );
 
 //tools list
 	$list = '<table>';
@@ -213,7 +248,7 @@
 	
 	unset($list);
 
-	$wt->assign( "url", $url.".org" );
+	$wt->assign( "domain", $domain );
 	$wt->assign( "lang", $lang );
 	$wt->assign( "wiki", $wiki );
 
@@ -265,90 +300,95 @@ function getPageTemplate( $type ){
 		}
 	}
 	</script>
-	<div style="text-align:center; font-weight:bold; " >
-			<span style="padding-right:10px;" >{#page#} &nbsp;&bull; </span>
-			<a style=" font-size:2em; " href="//{$url}/wiki/{$urlencodedpage}">{$page}</a> 
-			<span style="padding-left:10px;" > &bull;&nbsp; {$url} </span>
+
+	<div style="text-align:center; font-weight:bold; margin-top:1.5em" >
+			<a style=" font-size:1.5em; " href="http://{$domain}/wiki/{$urlencodedpage}">{$page}</a>
+			<span style="padding-left:10px;" > &bull;&nbsp; {$domain} </span>
 	</div>
-	<h3  style="margin-top:-0.8em;">{#generalstats#} &nbsp;&nbsp;<span style="font-size:75%;">[<a href="javascript:switchShow( \'generalstats\' )">show/hide</a>]</span></h3>
+	<h3  style="margin-top:-1.1em;">{#generalstats#} <span class="showhide">[<a href="javascript:switchShow( \'generalstats\' )">show/hide</a>]</span></h3>
 	<div id = "generalstats">
-	<table>
-		<tr><td>ID:</td><td><a href="//{$url}/w/index.php?title={$urlencodedpage}&action=info" >{$pageid}</a></td></tr>
-		<tr><td>Wikidata:</td><td>{$wikidata}</td></tr>
-		<tr><td colspan=20 ></td></tr>
-		<tr><td>{#totaledits#}:</td><td>{$totaledits}</td></tr>
-		<tr><td>{#editorcount#}:</td><td>{$editorcount}</td></tr>
-		<tr><td colspan=20 ></td></tr>	
-		<tr><td>{#firstedit#}:</td><td>{$firstedit}</td></tr>
-		<tr><td>{#firstedit#} {#username#}:</td><td><a href="//{$url}/wiki/User:{$firstuser}" >{$firstuser}</a></td></tr>
-		<tr><td>{#lastedit#}:</td><td>{$lastedit}</td></tr>
-		<tr><td colspan=20 ></td></tr>	
-		<tr><td>{#minoredits#}:</td><td><span class=tdgeneral >{$minoredits}</span> &nbsp;<small>({$minorpct}%)<small></td></tr>
-		<tr><td>{#anonedits#}:</td><td><span class=tdgeneral >{$anonedits}</span> <small>({$anonpct}%)</small></td></tr>
-		<tr><td>{#autoedits_num#}:</td><td><span class=tdgeneral >{$autoedits}</span> &nbsp;<small>({$autoeditspct}%)</small></td>
-		<tr><td colspan=20 ></td></tr>	
-		<tr><td>{#timebwedits#}:</td><td><span class=tdgeneral >{$timebwedits}</span> {#days#}</td></tr>
-		<tr><td>{#editspermonth#}:</td><td><span class=tdgeneral >{$editspermonth}</span></td></tr>
-		<tr><td>{#editsperyear#}:</td><td><span class=tdgeneral >{$editsperyear}</span></td></tr>
-		<tr><td colspan=20 ></td></tr>	
-		<tr><td>{#lastday#}:</td><td><span class=tdgeneral >{$lastday}</span></td></tr>
-		<tr><td>{#lastweek#}:</td><td><span class=tdgeneral >{$lastweek}</span></td></tr>
-		<tr><td>{#lastmonth#}:</td><td><span class=tdgeneral >{$lastmonth}</span></td></tr>
-		<tr><td>{#lastyear#}:</td><td><span class=tdgeneral >{$lastyear}</span></td></tr>
-		<tr><td colspan=20 ></td></tr>		
-		<tr><td>{#editsperuser#}:</td><td><span class=tdgeneral >{$editsperuser}</span></td></tr>
-		<tr><td>{#toptencount#}:&nbsp;&nbsp;&nbsp;</td><td><span class=tdgeneral >{$toptencount}</span> &nbsp;<small>({$toptenpct}%)</small></td></tr>
-	</table>
-	</div>
-
-	<div >
-	<table>
-		<tr>
-		<td><img src="//chart.googleapis.com/chart?cht=p&amp;chd=t:{$graphuserpct},{$graphanonpct}&amp;chs=280x100&amp;chdl={#users#}%20%28{$graphuserpct}%%29|{#ips#}%20%28{$graphanonpct}%%29&amp;chco=FF5555|55FF55&amp;chf=bg,s,00000000" alt="{#anonalt#}" /></td>
-		<td><img src="//chart.googleapis.com/chart?cht=p&amp;chd=t:{$graphminorpct},{$graphmajorpct}&amp;chs=280x100&amp;chdl={#minor#}%20%28{$graphminorpct}%%29|{#major#}%20%28{$graphmajorpct}%%29&amp;chco=FFAFAF|808080&amp;chf=bg,s,00000000" alt="{#minoralt#}" /></td>
-		<td><img src="//chart.googleapis.com/chart?cht=p&amp;chd=t:{$graphtoptenpct},{$graphbottomninetypct}&amp;chs=280x100&amp;chdl={#topten#}%20%28{$graphtoptenpct}%%29|{#bottomninety#}%20%28{$graphbottomninetypct}%%29&amp;chco=5555FF|55FFFF&amp;chf=bg,s,00000000" alt="{#toptenalt#}" /></td>
-		</tr>
-	</table>
-	</div>
-
-	<div style="padding:20px">
-		{$chartImgMonth}
+		<table>
+			<tr><td>ID:</td><td><a href="//{$domain}/w/index.php?title={$urlencodedpage}&action=info" >{$pageid}</a></td></tr>
+			<tr><td>Wikidata:</td><td>{$wikidata}</td></tr>
+			<tr><td colspan=20 ></td></tr>
+			<tr><td>{#totaledits#}:</td><td>{$totaledits}</td></tr>
+			<tr><td>{#editorcount#}:</td><td>{$editorcount}</td></tr>
+			<tr><td>{#cursize#}:</td><td>{$cursize} Bytes</td></tr>
+			<tr><td colspan=20 ></td></tr>	
+			<tr><td>{#firstedit#}:</td><td>{$firstedit} &nbsp;&bull;&nbsp; <a href="//{$domain}/wiki/User:{$firstuser}" >{$firstuser}</a></td></tr>
+			<tr><td>{#latestedit#}:</td><td>{$latestedit} &nbsp;&bull;&nbsp; <a href="//{$domain}/wiki/User:{$latestuser}" >{$latestuser}</a></td></tr>
+			<tr><td colspan=20 ></td></tr>	
+			<tr><td>{#maxadd#}:</td><td>{$maxadd} &nbsp;&bull;&nbsp; <a href="//{$domain}/wiki/User:{$maxadduser}" >{$maxadduser}</a> &nbsp;&bull;&nbsp; <a style="color:green" href="//{$lang}.{$wiki}.org/w/index.php?diff=prev&oldid={$maxadddiff} " >+{$maxaddnum}</td></tr>
+			<tr><td>{#maxdel#}:</td><td>{$maxdel} &nbsp;&bull;&nbsp; <a href="//{$domain}/wiki/User:{$maxdeluser}" >{$maxdeluser}</a> &nbsp;&bull;&nbsp; <a style="color:#cc0000" href="//{$lang}.{$wiki}.org/w/index.php?diff=prev&oldid={$maxdeldiff} " >{$maxdelnum}</a></td></tr>
+			<tr><td colspan=20 ></td></tr>	
+			<tr><td>{#minoredits#}:</td><td><span class= >{$minoredits}</span> &nbsp;<small>({$minorpct}%)<small></td></tr>
+			<tr><td>{#anonedits#}:</td><td><span class= >{$anonedits}</span> <small>({$anonpct}%)</small></td></tr>
+			<tr><td>{#autoedits#}:</td><td><span class= >{$autoedits}</span> &nbsp;<small>({$autoeditspct}%)</small></td>
+			<tr><td colspan=20 ></td></tr>	
+			<tr><td>{#timebwedits#}:</td><td><span class= >{$timebwedits}</span> {#days#}</td></tr>
+			<tr><td>{#editspermonth#}:</td><td><span class= >{$editspermonth}</span></td></tr>
+			<tr><td>{#editsperyear#}:</td><td><span class= >{$editsperyear}</span></td></tr>
+			<tr><td colspan=20 ></td></tr>	
+			<tr><td>{#lastday#}:</td><td><span class= >{$lastday}</span></td></tr>
+			<tr><td>{#lastweek#}:</td><td><span class= >{$lastweek}</span></td></tr>
+			<tr><td>{#lastmonth#}:</td><td><span class= >{$lastmonth}</span></td></tr>
+			<tr><td>{#lastyear#}:</td><td><span class= >{$lastyear}</span></td></tr>
+			<tr><td colspan=20 ></td></tr>		
+			<tr><td>{#editsperuser#}:</td><td><span class= >{$editsperuser}</span></td></tr>
+			<tr><td>{#toptencount#}:&nbsp;&nbsp;&nbsp;</td><td><span class= >{$toptencount}</span> &nbsp;<small>({$toptenpct}%)</small></td></tr>
+		</table>
+		<table>
+			<tr>
+			<td>{$graphuser}</td>
+			<td>{$graphminor}</td>
+			<td>{$graphtopten}</td>
+			</tr>
+		</table>
 	</div>
 
 	<!-- yeargraphs -->
-	<h3>{#yearcounts#} &nbsp;&nbsp;<span style="font-size:75%;">[<a href="javascript:switchShow( \'yearcounts\' )">show/hide</a>]</span></h3>
+	<h3>{#yearcounts#} <span class="showhide" >[<a href="javascript:switchShow( \'yearcounts\' )">show/hide</a>]</span></h3>
 	<div id="yearcounts">
-	<table class="months wikitable sortable">
-		{$yearcountlist}	
-	</table>
+		<div style="padding:20px">
+			{$chartImgYears}
+		</div>
+		<table class="months wikitable sortable" style="margin-left:60px;">
+			{$yearcountlist}	
+		</table>
 	</div>
 
 	<!-- $usertable -->
-	<h3>{#usertable#} &nbsp;&nbsp;<span style="font-size:75%;">[<a href="javascript:switchShow( \'usertable\' )">show/hide</a>]</span></h3>
-	<div>{$chartTopEditors}</div>
-	<div id="usertable">
-	<table class="months wikitable sortable">
-		<tr>
-			<th>{#username#}</th>
-			<th></th>
-			<th>{#count#}</th>
-			<th>{#minor#}</th>
-			<th>%</th>
-			<th>{#firstedit#}</th>
-			<th>{#lastedit#}</th>
-			<th>{#atbe#}</th>
-			<th>{#avgsize#}</th>
-		</tr>
-		{$usertable}
-	</table>
+	<h3>{#usertable#} <span class="showhide" >[<a href="javascript:switchShow( \'topeditors\' )">show/hide</a>]</span></h3>
+	<div id="topeditors">
+		<table>
+			<tr>
+			<td>{$chartTopEditorsByCount}</td>
+			<td>{$chartTopEditorsByText}</td>
+			</tr>
+		</table>
+		<span><sup>1</sup> {#atbe#}</span>
+		<table class="months wikitable sortable">
+			<tr>
+				<th>{#username#}</th>
+				<th></th>
+				<th>{#count#}</th>
+				<th>{#minor#}</th>
+				<th>%</th>
+				<th>{#firstedit#}</th>
+				<th>{#latestedit#}</th>
+				<th>atbe <sup>1</sup> ({#days#})</th>
+				<th>{#textadd#} (Bytes)</th>
+			</tr>
+			{$usertable}
+		</table>
 	</div>
 			
 	<!-- monthgraphs -->
-	<h3>{#monthcounts#} &nbsp;&nbsp;<span style="font-size:75%;">[<a href="javascript:switchShow( \'monthcounts\' )">show/hide</a>]</span></h3>
+	<h3>{#monthcounts#} <span class="showhide" >[<a href="javascript:switchShow( \'monthcounts\' )">show/hide</a>]</span></h3>
 	<div id="monthcounts">
-	<table class="months wikitable sortable">
-		{$monthcountlist}
-	</table>
+		<table class="months wikitable sortable">
+			{$monthcountlist}
+		</table>
 	</div>
 	';
 	

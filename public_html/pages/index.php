@@ -2,13 +2,11 @@
 
 //Requires
 	require_once( '../WebTool.php' );
-	require_once( 'base.php' );
 	
 //Load WebTool class
-	$wt = new WebTool( 'Pages', 'pages', array( "database") );
+	$wt = new WebTool( 'Pages', 'pages', array() );
 	$wt->setLimits();
 	
-	$base = new PagesBase();
 	$wt->content = getPageTemplate( 'form' );
 	$wt->assign("lang", "en");
 	$wt->assign("wiki", "wikipedia");
@@ -28,7 +26,8 @@
 	}
 
 //Get username & userid, quit if not exist
-	$userData = $base->getUserData( $dbr, $username );
+	$dbr = $wt->loadDatabase( $lang, $wiki );
+	$userData = getUserData( $dbr, $username );
 	
 	if( !$userData ) {
 		$wt->error = $I18N->msg("No such user");
@@ -37,7 +36,7 @@
 	
 
 //Execute main logic	
-	$result = $base->getCreatedPages( $dbr, $userData["user_id"], $lang, $wiki, $namespace, $redirects );
+	$result = getCreatedPages( $dbr, $userData["user_id"], $lang, $wiki, $namespace, $redirects );
 
 //Construct output
 	$filtertextNS = ( $result->filterns == "all" ) ? $I18N->msg('all') : $wgRequest->getVal('namespace');
@@ -56,13 +55,137 @@ unset( $base, $userData, $result );
 $wt->showPage();
 
 
+/**************************************** stand alone functions ****************************************
+ *
+*/
+	function getUserData( $dbr, $username ){
+	
+		$user = $dbr->strencode($username);
+		$query = "
+			SELECT user_name, user_id
+			FROM user
+			WHERE user_name = '$user';
+		";
+	
+		$result = $dbr->query( $query );
+		$userdata = $result[0];
+	
+		return $userdata;
+	}
+	
+	function getCreatedPages( &$dbr, $user_id, $lang, $wiki, $namespace, $redirects ){
+	
+		$namespaceCondition = ($namespace == "all") ? "" : " and page_namespace = '".intval($namespace)."' ";
+		$redirectCondition = "";
+		if ( $redirects == "onlyredirects" ){ $redirectCondition = " and page_is_redirect = '1' "; }
+		if ( $redirects == "noredirects" ){ $redirectCondition = " and page_is_redirect = '0' "; }
+	
+		$query = "
+			SELECT DISTINCT page_namespace, page_title, page_is_redirect, page_id, rev_timestamp
+			FROM page
+			JOIN revision_userindex on page_id = rev_page
+			WHERE rev_user = '$user_id' AND rev_timestamp > 1 AND rev_parent_id = '0'  $namespaceCondition  $redirectCondition
+			ORDER BY page_namespace ASC, rev_timestamp DESC;
+		";
+	
+		$items = $dbr->query( $query );
+	
+		$nsnames = getNamespaceNames( $lang, $wiki );
+	
+		$result = new stdClass(
+				$filter 	 = null,
+				$namespaces  = null,
+				$list 		 = null
+		);
+	
+		$currentNamespace = "-1";
+		$currentNumber = 0;
+	
+		foreach ( $items as $i => $item ){
+			$pageurl  = urlencode( $item["page_title"] );
+			$page 	  = str_replace("_", " ", $item["page_title"]);
+			$date 	  = date("Y-m-d", strtotime($item["rev_timestamp"]));
+			$ns 	  = $item["page_namespace"];
+			$prefix   = $nsnames[$ns].":";
+			$redirect = ( $item["page_is_redirect"] == 1 ) ? "(redirect)" : "";
+		
+		
+			//create a new header if namespace changes
+			if( $ns != $currentNamespace){
+		
+				$result->list .= "<tr ><td colspan=4 ><h3 id=$ns >".$nsnames[$ns]."</h3></td></tr>";
+				$result->namespaces[$ns]["name"] = $nsnames[$ns];
+		
+				$currentNamespace = $ns;
+				$currentNumber = 0;
+			}
+		
+			$result->namespaces[$ns]["num"]  += 1;
+			if ($redirect != "") { $result->namespaces[$ns]["redir"]  += 1; }
+			$currentNumber++;
+		
+			$result->list .= "
+			<tr>
+			<td>$currentNumber.</td>
+			<td><a href=\"//$lang.$wiki.org/wiki/$prefix$pageurl?redirect=no\">$page</a> <small> $redirect</small></td>
+			<td style='font-size:95%' >$date</td>
+			</tr>
+			";
+		}
+	
+		$result->filterns = $namespace;
+		$result->filterredir = $redirects;
+		$result->total = count($items);
+		unset($items, $nsnames);
+	
+		//make serialized lists for graphics & toptable
+		foreach ( $result->namespaces as $num => $ns ){
+			$result->listns .= "|".$ns["name"];
+			$result->listnum .= ",".intval((intval($ns["num"])/intval($result->total))*100);
+				
+			$result->listnamespaces .='
+				<tr>
+				<td style="padding-right:5px; text-align:center;">'.$num.'</td>
+				<td style="padding-right:10px"><a href="#{$number}" >'.$ns["name"].'</a></td>
+				<td style="text-align:right" >'.$ns["num"].'</td>
+				<td style="text-align:right" >'.$ns["redir"].'</td>
+				</tr>
+			';
+		}
+
+		$result->listns = urlencode( substr($result->listns, 1) );
+		$result->listnum = urlencode( substr($result->listnum, 1) );
+	
+		return $result;
+	}
+	
+	function getNamespaceNames( $lang, $wiki ) {
+	
+		$http = new HTTP();
+		$namespaces = $http->get( "http://$lang.$wiki.org/w/api.php?action=query&meta=siteinfo&siprop=namespaces&format=php" );
+		$namespaces = unserialize( $namespaces );
+		$namespaces = $namespaces['query']['namespaces'];
+		unset( $namespaces[-2] );
+		unset( $namespaces[-1] );
+	
+		$namespaces[0]['*'] = "Main";
+	
+	
+		$namespacenames = array();
+		foreach ($namespaces as $value => $ns) {
+			$namespacenames[$value] = $ns['*'];
+		}
+	
+		return $namespacenames;
+	}
+
 /**************************************** templates ****************************************
  *
 */
 function getPageTemplate( $type ){
 
 	$templateForm = '
-			
+	<br />		
 	<form action="?" method="get" accept-charset="utf-8">
 	<table>
 		<tr><td>{#username#}: </td><td><input type="text" name="user" /></td></tr>
@@ -114,7 +237,7 @@ function getPageTemplate( $type ){
 	
 	$templateResult = '
 	
-	<span>{$totalcreated}&nbsp;({#namespace#}: {$nsFilter}, {#redirects#}: {$redirFilter} )</span>
+	<p>{$totalcreated}&nbsp;({#namespace#}: {$nsFilter}, {#redirects#}: {$redirFilter} )</p>
 	<table>
 		<tr>
 		<td>

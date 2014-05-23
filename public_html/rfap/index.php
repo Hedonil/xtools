@@ -5,7 +5,7 @@
 
 
 //Load WebTool class
-	$wt = new WebTool( 'RfX Vote', 'rfap', array( "database", "api" ) );
+	$wt = new WebTool( 'RfX Vote', 'rfap', array() );
 	$wt->setLimits();
 
 	$wt->content = getPageTemplate( 'form' );
@@ -33,13 +33,14 @@
 	}
 	
 // Calculate all the things	
+	$dbr = $wt->loadDatabase( 'en', 'wikipedia' );
+	$site = $wt->loadPeachy( 'en', 'wikipedia' );
 	$votes = get_rfap( $dbr, $site, $name, $aorb );
 
 
 // Generate the output
-	$output = '<h2>How did a user vote?</h2>';
 	
-	$output .= '<table><tr><td><p>Considered usernames:</p><ul>';
+	$output = '<table><tr><td><p>Considered usernames:</p><ul>';
 	foreach ( $votes["altnames"] as $i => $altname ){
 		$output .= '<li><a href="//en.wikipedia.org/wiki/User:'.$altname.'" >'.$altname.'</a></li> ';
 	}
@@ -47,7 +48,7 @@
 	
 	$total = count($votes["support"]) + count($votes["oppose"]) + count($votes["neutral"]) + count($votes["unknown"]);
 	$output .= '
-		<span>'.$votes["altnames"][0].' has edited '.$total.' RfA\'s!</span><br />
+		<span>'.$votes["altnames"][0].' has voted on '.$total.' Request for '.ucfirst($aorb).' pages!</span><br />
 		<span> 
 			Supported: '.count($votes["support"]).',  
 			Opposed: '.count($votes["oppose"]).', 
@@ -104,12 +105,15 @@
 	
 		// Get alternative names
 		$output["altnames"][] = $name;
-	
+		
+		$sql_aorb = $dbr->strencode($aorb);
+		$sql_name = $dbr->strencode($name);
+		
 		$query = "
 			SELECT pl_from , (select b.page_title from page as b where b.page_id = pl_from) as altname
 			FROM page
 			JOIN pagelinks on pl_from=page_id and pl_namespace=page_namespace
-			WHERE page_is_redirect = 1 AND page_namespace = 2 AND  pl_title = '$name'
+			WHERE page_is_redirect = 1 AND page_namespace = 2 AND  pl_title = '$sql_name'
 		";
 	
 		$result = $dbr->query( $query );
@@ -125,10 +129,10 @@
 			SELECT page_latest, UNIX_TIMESTAMP(rev_timestamp) as timestamp, page_title, COUNT(*)
 			FROM revision_userindex
 			JOIN page on page_id = rev_page
-			WHERE rev_user_text = '$name'
+			WHERE rev_user_text = '$sql_name'
 			AND page_namespace = '4'
-			AND page_title LIKE 'Requests_for_".$aorb."/%'
-			AND page_title NOT LIKE '%$name%'
+			AND page_title LIKE 'Requests_for_".$sql_aorb."/%'
+			AND page_title NOT LIKE '%$sql_name%'
 			AND page_title != 'Requests_for_adminship/RfA_and_RfB_Report'
 			AND page_title != 'Requests_for_adminship/BAG'
 			AND page_title NOT LIKE 'Requests_for_adminship/Nomination_cabal%'
@@ -213,12 +217,15 @@ function getPageTemplate( $type ){
 
 	$templateForm = '
 			
-	<p>Welcome to the RfX Vote Calculator!</p>
+	<br />
 	<form action="index.php" method="get">
-	Username: <input type="text" name="name" /><br />
-	Get RfBs: <input type="checkbox" name="rfb" /><br />
-	<input type="submit" />
+		<table>
+		<tr><td>Username: </td><td><input type="text" name="name" /></td></tr>
+		<tr><td>Get RfBs: </td><td><input type="checkbox" name="rfb" /></td></tr>
+		<tr><td colspan=2 ><input type="submit" value="{#submit#}"/></td></tr>
+		</table>
 	</form>
+	<br />
 	';
 	
 	if( $type == "form" ) { return $templateForm; }

@@ -1,246 +1,196 @@
 <?php
 
-//error_reporting(E_ALL);
-ini_set("display_errors", 1);
+//Requires
+	require_once( '../WebTool.php' );
 
-$time = microtime( 1 );//Calculate time in microseconds to calculate time taken to execute
-
-include( '/data/project/xtools/public_html/common/header.php' );
-include( '/data/project/xtools/stats.php' );
-require_once( '/data/project/xtools/database.inc' );
-
-$tool = 'TopEdits';
-$surl = "//tools.wmflabs.org".$_SERVER['REQUEST_URI'];
-if (isset($_GET['name'])) {
-   addStat( $tool, $surl, $_SERVER['HTTP_REFERER'], $_SERVER['HTTP_USER_AGENT'] );//Stat checking
-}
-unset($tool, $surl);
-
-//Debugging stuff
-function pre( $array ) {
-   echo "<pre>";
-   print_r( $array );
-   echo "</pre>";
-}
-
-//Output header
-echo '<div id="content">
-   <table class="cont_table" style="width:100%;">
-   <tr>
-   <td class="cont_td" style="width:75%;">
-   <h2 class="table">Top Namespace Edits</h2>';
-
-//Access to the wiki
-function getUrl($url) {
-   $ch = curl_init();
-    curl_setopt($ch,CURLOPT_MAXCONNECTS,100);
-    curl_setopt($ch,CURLOPT_CLOSEPOLICY,CURLCLOSEPOLICY_LEAST_RECENTLY_USED);
-    curl_setopt($ch,CURLOPT_URL,$url);
-    curl_setopt($ch,CURLOPT_MAXREDIRS,10);
-    curl_setopt($ch,CURLOPT_HEADER,0);
-    curl_setopt($ch,CURLOPT_RETURNTRANSFER,1);
-    curl_setopt($ch,CURLOPT_TIMEOUT,30);
-    curl_setopt($ch,CURLOPT_CONNECTTIMEOUT,10);
-    curl_setopt($ch,CURLOPT_HTTPGET,1);
-    $data = curl_exec($ch);
-    curl_close($ch);
-
-    return $data;
-}
-
-//If there is a failure, do it pretty.
-function toDie( $msg ) {
-   echo $msg;
-   include( '/data/project/xtools/public_html/common/footer.php' );
-   die();
-}
-
-//Get array of namespaces
-function getNamespaces() {
-   $namespaces = getUrl( 'https://en.wikipedia.org/w/api.php?action=query&meta=siteinfo&siprop=namespaces&format=php' );
-   $namespaces = unserialize( $namespaces );
-   $namespaces = $namespaces['query']['namespaces'];
+//Load WebTool class
+	$wt = new WebTool( 'Top edits', 'topedits', array() );
+	$wt->setLimits();
+	
+	$wt->content = getPageTemplate( 'form' );
+	$wt->assign("lang", "en");
+	$wt->assign("wiki", "wikipedia");
+	
+	$lang = $wgRequest->getVal('lang');
+	$wiki = $wgRequest->getVal('wiki');
+	$namespace = $wgRequest->getVal('namespace');
+	
+	$username = $wgRequest->getVal('user');
+	$username = $wgRequest->getBool('name') ? $wgRequest->getVal('name') : $username;
 
 
-   unset( $namespaces[-2] );
-   unset( $namespaces[-1] );
+//Show form if &article parameter is not set (or empty)
+	if( !$username ) {
+		$wt->showPage();
+	}
 
-   $namespaces[0]['*'] = "Mainspace";
+//Get username & userid, quit if not exist
+	$dbr = $wt->loadDatabase( $lang, $wiki );
+	$userData = checkUserData( $dbr, $username );
 
-   $namespacenames = array();
-   foreach ($namespaces as $value => $ns) {
-      $namespacenames[$value] = $ns['*'];
-   }
-   return array($namespacenames);
+	if( !$userData ) {
+		$wt->error = $I18N->msg("No such user");
+		$wt->showPage();
+	}
+	
+$wt->content = getTopEdits($dbr, $lang, $wiki, $username, $namespace);
+$wt->showPage();
+
+
+
+/**************************************** stand alone functions ****************************************
+ *
+*/
+function checkUserData( $dbr, $username ){
+	
+	if ( long2ip( ip2long( $username ) ) == $username ) 
+	 return true; 
+	
+	$user = $dbr->strencode($username);
+	$query = "
+		SELECT user_id
+		FROM user
+		WHERE user_name = '$user';
+	";
+	 
+	$result = $dbr->query( $query );
+	$userdata = $result[0]["user_id"];
+	 
+	return $userdata;
 }
 
-//Check if the user is an IP address
-if( preg_match( '/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/', $oldname ) ) {
-   define( 'ISIPADDRESS', true );
-}
-else {
-   define( 'ISIPADDRESS', false );
-}
+function getTopEdits( $dbr, $lang, $wiki, $username, $namespace ){
+	
+	$nsnames = getNamespaceNames( $lang, $wiki );
 
-if( !isset( $_GET['name'] ) ) {
-   $msg = 'Welcome to X!\'s namespace counter tool!<br /><br />
-      <form action="//tools.wmflabs.org/xtools/topedits/index.php" method="get">
-      Username: <input type="text" name="name" /><br />
-      Namespace: <select name="namespace">
-      <option value="0">Main</option>
-      <option value="1">Talk</option>
-      <option value="2">User</option>
-      <option value="3">User talk</option>
-      <option value="4">Wikipedia</option>
-      <option value="5">Wikipedia talk</option>
-      <option value="6">File</option>
-      <option value="7">File talk</option>
-      <option value="8">MediaWiki</option>
-      <option value="9">MediaWiki talk</option>
-      <option value="10">Template</option>
-      <option value="11">Template talk</option>
-      <option value="12">Help</option>
-      <option value="13">Help talk</option>
-      <option value="14">Category</option>
-      <option value="15">Category talk</option>
-      <option value="100">Portal</option>
-      <option value="101">Portal talk</option>
-      </select><br />
-      <input type="submit" value="Submit" />
-      </form><br /><hr />';
-
-   toDie( $msg );
-}
-
-$oldname = ucfirst( ltrim( rtrim( str_replace( array('&#39;','%20'), array('\'',' '), $_GET['name'] ) ) ) );
-$oldname = urldecode($oldname);
-$oldname = str_replace('_', ' ', $oldname);
-$oldname = str_replace('/', '', $oldname);
-$name = mysql_escape_string( $oldname );
-$namespace = mysql_escape_string( $_GET['namespace'] );
-$nsnames = getNamespaces();
-
-mysql_connect( 'enwiki.labsdb',$toolserver_username,$toolserver_password );
-@mysql_select_db( 'enwiki_p' ) or toDie( "MySQL ERROR! ". mysql_error() );
-
-
-function getReplag() {
-   $query = "SELECT UNIX_TIMESTAMP() - UNIX_TIMESTAMP(rc_timestamp) as replag FROM recentchanges_userindex ORDER BY rc_timestamp DESC LIMIT 1";
-      $result = mysql_query( $query );
-      if( !$result ) toDie( "MySQL ERROR! ". mysql_error() );
-      $row = mysql_fetch_assoc( $result );
-      $replag = $row['replag'];
-
-      $seconds = floor($replag);
-      $text = formatReplag($seconds);
-
-       return array($seconds,$text);
+	$namespace = intval($namespace);
+	$username = $dbr->strencode($username);
+	
+	$query = "
+      		SELECT /* SLOW_OK */ page_namespace, page_title, page_is_redirect, count(page_title) as count
+			FROM page
+			JOIN revision_userindex ON page_id = rev_page
+			WHERE rev_user_text = '$username' AND page_namespace = '$namespace'
+			GROUP BY page_namespace, page_title
+			ORDER BY count DESC
+      		LIMIT 100
+		";
+	
+	$res = $dbr-> query( $query ); 
+	
+	$list = '
+		<br />
+		<b>Top 100 namespace edits for: '.$username.'</b>
+		<h3>'.$nsnames[$namespace].'</h3>
+		<table style="font-size:85%; margin-left:50px;">
+	';
+	 
+	foreach ( $res as $i => $page ) {
+	
+		$nscolon = '';
+		if( $page["page_namespace"] != 0 ) {
+			$nscolon = $nsnames[ $page["page_namespace"] ].":";
+		}
+	
+		$list .= '<tr>
+   			<td>'.$page["count"].'</td>
+   			<td><a href="//'.$lang.'.'.$wiki.'.org/wiki/'.$nscolon.str_replace(array('%2F','_'),array('/',' '),urlencode( $page["page_title"] )).'" >'.str_replace('_', '',$page["page_title"]).'</a></td>
+   			</tr>';
+	}
+	$list .= "</table>";
+   
+   return $list;
 }
 
-function formatReplag($secs) {
-   $second = 1;
-   $minute = $second * 60;
-   $hour = $minute * 60;
-   $day = $hour * 24;
-   $week = $day * 7;
+function getNamespaceNames( $lang, $wiki ) {
 
-   $r = '';
-   if ($secs > $week) {
-      $r .= floor($secs/$week) . wfMsg( 'w' );
-      $secs %= $week;
-   }
-   if ($secs > $day) {
-      $r .= floor($secs/$day) . wfMsg( 'd' );
-      $secs %= $day;
-   }
-   if ($secs > $hour) {
-      $r .= floor($secs/$hour) . wfMsg( 'h' );
-      $secs %= $hour;
-   }
-   if ($secs > $minute) {
-      $r .= floor($secs/$minute) . wfMsg( 'm' );
-      $secs %= $week;
-   }
-   if ($secs > $second) {
-      $r .= floor(($secs/$second)/100) . wfMsg( 's' );
-   }
+	$http = new HTTP();
+	$namespaces = $http->get( "http://$lang.$wiki.org/w/api.php?action=query&meta=siteinfo&siprop=namespaces&format=php" );
+	$namespaces = unserialize( $namespaces );
+	$namespaces = $namespaces['query']['namespaces'];
+	unset( $namespaces[-2] );
+	unset( $namespaces[-1] );
 
-   return $r;
+	$namespaces[0]['*'] = "Main";
+
+
+	$namespacenames = array();
+	foreach ($namespaces as $value => $ns) {
+		$namespacenames[$value] = $ns['*'];
+	}
+
+	return $namespacenames;
 }
 
-if( ISIPADDRESS == false ) {//IP addresses don't have a field in the user table, so IPs must be done the old way.
-      $query = "SELECT user_editcount, user_id FROM user WHERE user_name = '".$name."';";
-      $result = mysql_query( $query );
-      if( !$result ) toDie( "MySQL ERROR! ". mysql_error() );
-      $row = mysql_fetch_assoc( $result );
-      $edit_count_total = $row['user_editcount'];
-      $uid = $row['user_id'];
-   }
-   unset( $row, $query, $result );
+/**************************************** templates ****************************************
+ *
+*/
+function getPageTemplate( $type ){
+
+	$templateForm = '
+	<br />
+	<form action="?" method="get" accept-charset="utf-8">
+	<table>
+		<tr><td>{#username#}: </td><td><input type="text" name="user" /></td></tr>
+		<tr><td>{#wiki#}: </td><td><input type="text" value="{$lang}" name="lang" size="9" />.<input type="text" value="{$wiki}" size="10" name="wiki" />.org</td></tr>
+		<tr><td>{#namespace#}: </td>
+			<td>
+				<select name="namespace">
+					<option value="0">Main</option>
+					<option value="1">Talk</option>
+					<option value="2">User</option>
+					<option value="3">User talk</option>
+					<option value="4">Wikipedia</option>
+					<option value="5">Wikipedia talk</option>
+					<option value="6">File</option>
+					<option value="7">File talk</option>
+					<option value="8">MediaWiki</option>
+					<option value="9">MediaWiki talk</option>
+					<option value="10">Template</option>
+					<option value="11">Template talk</option>
+					<option value="12">Help</option>
+					<option value="13">Help talk</option>
+					<option value="14">Category</option>
+					<option value="15">Category talk</option>
+					<option value="100">Portal</option>
+					<option value="101">Portal talk</option>
+					<option value="108">Book</option>
+					<option value="109">Book talk</option>
+				</select><br />
+			</td>
+		</tr>
+		<tr><td colspan="2"><input type="submit" value="{#submit#}" /></td></tr>
+	</table>
+	</form><br />
+	';
 
 
-   if( ISIPADDRESS == false ) {//IPs don't have user groups!
-      $groups = getUrl( 'https://'.$oldlang.'.'.$oldwiki.'.org/w/api.php?action=query&list=users&ususers='.urlencode( $oldname ).'&usprop=groups&format=php', false );
-      $groups = unserialize( $groups );
-      $groups = $groups['query']['users']['0']['groups'];
-      if( $uid == 0 ) {
-         toDie( wfMsg('nosuchuser', $name ) );
-      }
-   }
+	$templateResult = '
 
+	<p>{$totalcreated}&nbsp;({#namespace#}: {$nsFilter}, {#redirects#}: {$redirFilter} )</p>
+	<table>
+		<tr>
+		<td>
+		<table style="margin-top: 10px" >
+			<tr>
+			<th>NS</th>
+			<th>NS name</th>
+			<th>Pages</th>
+			<th style="padding_left:5px">&nbsp;&nbsp;(Redirects)</th>
+			</tr>
+			{$namespace_overview}
+		</table>
+		</td>
+		<td><img src="//chart.googleapis.com/chart?cht=p3&amp;chd=t:{$chartValues}&amp;chs=550x140&amp;chl={$chartText}&amp;chco=599ad3|f1595f|79c36a|f9a65a|727272|9e66ab|cd7058|ff0000|00ff00&amp;chf=bg,s,00000000" alt="minor" /></td>
+		</tr>
+	</table>
 
-   if( ISIPADDRESS == false ) {//IPs don't have a user ID
-      $query = "SELECT /* SLOW_OK */ rev_timestamp,page_title,page_namespace,rev_comment,page_is_redirect FROM revision_userindex JOIN page ON page_id = rev_page WHERE rev_user = '".$uid."' AND page_namespace = '".$namespace."' ORDER BY rev_timestamp ASC;";
-   }
-   else {
-      $query = "SELECT /* SLOW_OK */ rev_timestamp,page_title,page_namespace,rev_comment,page_is_redirect FROM revision_userindex JOIN page ON page_id = rev_page WHERE rev_user_text = '".$name."' AND page_namespace = '".$namespace."' ORDER BY rev_timestamp ASC;";
-   }
+	<table>
+		{$resultDetails}
+	</table>
+	';
 
-   $result = mysql_query( $query );
-   if( !$result ) toDie( "MySQL ERROR! ". mysql_error() );
-   unset($query);
+	if( $type == "form" ) { return $templateForm; }
+	if( $type == "result" ) { return $templateResult; }
 
-$unique_articles = array();
-$redirects = array();
-while ( $row = mysql_fetch_assoc( $result ) ) {
-   $unique_articles[$row['page_title']]++;
-   //$redirects[$row['page_title']] = $row['page_is_redirect'];
 }
-
-asort($unique_articles);
-$unique_articles = array_reverse($unique_articles);
-array_splice($unique_articles, 100);
-
-echo "<b>Top 100 edits in the ".$nsnames[0][$namespace]." namespace by $oldname.</b><br /><br />\n";
-echo "<ul>";
-foreach ( $unique_articles as $page => $arts ) {
-   if( $namespace == 0 ) {
-      $nscolon = '';
-   }
-   else {
-      $nscolon = $nsnames[0][$namespace].":";
-   }
-   $trimmed = substr($page, 0, 50).'...';
-   print '<li>'.$arts." - <a href=\"https://en.wikipedia.org/wiki/".$nscolon.str_replace(array('%2F','_'),array('/',' '),urlencode( $page )).'">';
-   if(strlen(substr($page, 0, 50))<strlen($page)) {
-      echo str_replace('_',' ',$trimmed);
-   }
-   else {
-      echo str_replace('_',' ',$page);
-   }
-   /*if( $redirects[$page] == 1 ) {
-      echo " (redirect)";
-   }*/
-   echo "</a></li>\n";
-}
-echo "</ul>";
-
-//Calculate time taken to execute
-$exectime = number_format(microtime( 1 ) - $time, 2, '.', '');
-echo "<br /><hr><span style=\"font-size:100%;\">Excecuted in ". $exectime ." seconds.</span>";
-echo "<br />Taken ".number_format((memory_get_usage() / (1024 * 1024)), 2, '.', '')." megabytes of memory to execute.";
-
-//Output footer
-include( '/data/project/xtools/public_html/common/footer.php' );
-
-?>

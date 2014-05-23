@@ -6,9 +6,8 @@
 	require_once( '../Counter.php' );
 
 	
-	
 //Load WebTool class
-	$wt = new WebTool( 'Edit counter classic', 'pcount', array() );
+	$wt = new WebTool( 'Edit counter classic', 'ec', array() );
 	$wt->setLimits( 650, 60 );
 	
 	$wt->content = getPageTemplate( "form" );
@@ -26,12 +25,6 @@
 		$wt->showPage($wt);
 	}
 
-
-	$opt_in = array();
-	$opt_out = array();
-	$no_opt = array();
-	$default = 'optin';
-	
 	$wiki = $wgRequest->getVal('wiki');
 	$lang = $wgRequest->getVal('lang');
 
@@ -53,7 +46,6 @@
 	}
 
 	$graphNS = xGraph::makePieGoogle( $cnt->getNamespaceTotals() );
-	#$graphNS = "../tmp/".xGraph::makePie( $cnt->getNamespaceTotals() );
 	$legendNS = xGraph::makeLegendTable(  $cnt->getNamespaceTotals(), $cnt->getNamespaces() );
 	
 	$graphMonths = xGraph::makeHorizontalBar( "month", $cnt->getMonthTotals(), 800);
@@ -73,7 +65,7 @@
 	$out = null;
 	
 	foreach( $uniqueEdits['namespace_specific'] as $namespace_id => $articles ) {
-		//$out .= "<h4>" . $wgNamespaces['names'][$namespace_id] . "</h4>\n";
+
 		$out .= '<table class="collapsible collapsed"><tr><th>' . $wgNamespaces['names'][$namespace_id] . '</th></tr><tr><td>';
 		$out .= "<ul>\n";
 	
@@ -106,7 +98,7 @@
 	}
 	
 //Make list of automated edits tools
-	$list = '<div>{#autoedits_approx#}</div><br /><table>';
+	$list = '<br /><table>';
 	foreach ( $cnt->getAEBTypes() as $tool => $sth){
 		$list .= '
 				<tr>
@@ -179,22 +171,17 @@
 	$wt->assign( "yearcounts", $graphYears );
 	
 	
-	if( true ){ //$cnt->isOptedIn( $cnt->getName() ) ) {
-		$wt->assign( "monthcounts", $graphMonths );
-		$wt->assign( "topedited", $out );
-	}
-	else {
+	if( $lang == "de" && !$cnt->optin ) {
 		$wt->assign( "monthcounts", $I18N->msg( "nograph", array( "variables"=> array( $cnt->getName(), $url) )));
 		$wt->assign( "topedited", '');
+	}
+	else {
+		$wt->assign( "monthcounts", $graphMonths );
+		$wt->assign( "topedited", $out );
 	}
 
 	$wt->assign( 'exp_color_table', ''); //xGraph::makeColorTable());
 
-// $wt->moreheader =
-//    '<link rel="stylesheet" href="//tools.wmflabs.org/xtools/counter_commons/NavFrame.css" type="text/css" />' . "\n\t" .
-//    '<script src="//bits.wikimedia.org/skins-1.5/common/wikibits.js?urid=257z32_1264870003" type="text/javascript"></script>' . "\n\t" .
-//    '<script src="//tools.wmflabs.org/xtools/counter_commons/NavFrame.js" type="text/javascript"></script>'
-// ;
 
 unset( $out, $graph, $cnt );
 $wt->showPage();
@@ -208,8 +195,6 @@ function getPageTemplate( $type ){
 	$templateForm = '
 			
 	<br />
-	{#welcome#}
-	<br /><br />
 	<form action="?" method="get">
 		<table>
 		<tr><td>{#username#}: </td><td><input type="text" name="user" /></td></tr>
@@ -232,12 +217,11 @@ function getPageTemplate( $type ){
 		}
 	}
 	</script>
-	<div style="text-align:center; font-weight:bold; " >
-			<span style="padding-right:10px;" >{#username#} &nbsp;&bull; </span>
+	<div style="text-align:center; font-weight:bold; margin-top:1em" >
 			<a style=" font-size:2em; " href="http://{$url$}/wiki/User:{$usernameurl$}">{$username$}</a>
 			<span style="padding-left:10px;" > &bull;&nbsp; {$url} </span>
 	</div>
-	<h3  style="margin-top:-0.8em;">{#generalstats#} <span class="showhide">[<a href="javascript:switchShow( \'generalstats\' )">show/hide</a>]</span></h3>
+	<h3  style="margin-top:-1.1em;">{#generalstats#} <span class="showhide">[<a href="javascript:switchShow( \'generalstats\' )">show/hide</a>]</span></h3>
 	<div id = "generalstats">
 		<table>
 			<tr><td>{#userid#}:</td><td style="padding-left:10px;" >{$userid}</td></tr>
@@ -258,7 +242,7 @@ function getPageTemplate( $type ){
 				<tr><td>{#files_uploaded#}:</td><td><span class="tdgeneral" >{$uploaded}</span></td></tr>
 				<tr><td>{#files_uploaded#} (Commons):</td><td><span class="tdgeneral" >{$uploaded_commons}</span></td></tr>
 				<tr><td colspan=20 ></td></tr>
-				<tr><td>{#autoedits_num#}:</td><td><span class="tdgeneral" ><a href="#autoeditslist">{$autoedits}</a></span></td></tr>
+				<tr><td>{#autoedits#}:</td><td><span class="tdgeneral" ><a href="#autoeditslist">{$autoedits}</a></span></td></tr>
 				<tr><td>{#reverted#}:</td><td><span class="tdgeneral" >{$reverted$}</span></td></tr>
 				<tr><td colspan=20 ></td></tr>
 				<tr><td>{#live#}:</td><td><span class="tdgeneral" >{$live$}</span></td></tr>
@@ -318,9 +302,9 @@ function getPageTemplate( $type ){
 		<br />
 		</div>
 	<a name="autoeditslist"></a>
-	<h3>{#autoedits_title#} <span class="showhide" >[<a href="javascript:switchShow( \'autoeditslist\' )">show/hide</a>]</span></h3>
+	<h3>{#autoedits#} <span class="showhide" >[<a href="javascript:switchShow( \'autoeditslist\' )">show/hide</a>]</span></h3>
 		<div id="autoeditslist" >
-		{$autoeditslist$}
+		{$autoeditslist}
 		<br />
 		</div>
 	';

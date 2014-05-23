@@ -1,5 +1,5 @@
 var stylepath = '//upload.wikimedia.org/wikipedia';
-var wgContentLanguage = 'ru';
+var wgContentLanguage = 'en';
 
 
 
@@ -13,6 +13,8 @@ var wgContentLanguage = 'ru';
  * @todo don't break on colspans/rowspans (bug 8028)
  * @todo language-specific digit grouping/decimals (bug 8063)
  * @todo support all accepted date formats (bug 8226)
+ * 
+ * Modififed (c) 2014 Hedonil
  */
 
 var ts_image_path = stylepath+"/commons/7/73/";

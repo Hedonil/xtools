@@ -32,9 +32,8 @@ class WebTool {
 	public $error;
 	public $replag;
 	
-	public $replagtime;
-	
-	public $title;
+	public $toolTitle;
+	public $toolDesc;    //description
 	
 	public $content;
 	
@@ -45,53 +44,111 @@ class WebTool {
 	
 	public $userinfo;
 	
+	public $i18Langs;
 	public $uselang;
-	public $translate;
+	public $translateMsg;
 	public $langLinks;
 	
-	private $numberFormater;
-	private $dateFormater;
+	private $numberFormatter;
+	private $dateFormatter;
+	private $dateFormatterDate;
+	private $dateFormatterTime;
 	private $mOutput;
 
 	function __construct( $viewtitle = null, $configtitle = null, $options = array() ) {
-		global $wgRequest, $dbr, $site, $I18N, $redis, $lang, $wiki, $url;
+		global $wgRequest, $dbr, $site, $I18N, $redis;
 		
-		//old style -> global object
+		//Start session
+#		session_cache_limiter("public");
+		$lifetime = 86400;
+		$path = preg_replace('/^(\/.*\/).*/', '\1', dirname($_SERVER['SCRIPT_NAME']) );
+		session_name( 'xtools' );
+		session_set_cookie_params ( $lifetime, $path, ".tools.wmflabs.org"); 
+		session_start();
+		
+		//Init webRequest object
 		$wgRequest = new WebRequest();
-		$this->getWikiInfo();
 		
+		//Init redis caching support
 		$redis = $this->initRedis();
-		$I18N = $this->initI18N();
 		
-		$this->uselang = $wgRequest->getVal( 'uselang', 'en');
+		//Init I18n language support
+		$I18N = $this->initI18N();
+		$this->checkLocale();
 		$I18N->setLang( $this->uselang );
 		
-		$this->title = $viewtitle;
+		//Init I18 specific number/date formatter
+		$this->numberFormatter   = new NumberFormatter( $this->uselang, NumberFormatter::DECIMAL);
+		$this->dateFormatter     = new IntlDateFormatter( $this->uselang, IntlDateFormatter::MEDIUM, IntlDateFormatter::MEDIUM, "UTC", IntlDateFormatter::GREGORIAN);
+		$this->dateFormatterDate = new IntlDateFormatter( $this->uselang, IntlDateFormatter::MEDIUM, IntlDateFormatter::NONE, IntlDateFormatter::GREGORIAN);
+		$this->dateFormatterTime = new IntlDateFormatter( $this->uselang, IntlDateFormatter::NONE, IntlDateFormatter::SHORT, "UTC", IntlDateFormatter::GREGORIAN);
+		
+		$this->toolTitle = $I18N->msg( 'tool_'.$configtitle );
+		$this->toolDesc  = $I18N->msg( 'tool_'.$configtitle.'_desc' );
+		
 		$this->sourcecode = '<a href="//github.com/x-Tools/xtools/" >'.$I18N->msg('source').'</a> |';
 		$this->bugreport = '<a href="//github.com/x-Tools/xtools/issues" >'.$I18N->msg('bugs').'</a> |';
-		$this->translate = $I18N->msg('translatelink');
-		$this->langLinks = $I18N->langLinks;
 		
-		$this->numberFormater = new NumberFormatter( $I18N->getLang(), NumberFormatter::DECIMAL);
-		$this->dateFormater   = new IntlDateFormatter( $I18N->getLang(), IntlDateFormatter::MEDIUM, IntlDateFormatter::MEDIUM, "UTC", IntlDateFormatter::GREGORIAN);
-		
-	
 		mb_internal_encoding("utf-8"); 
-		header('content-type: text/html; charset: utf-8'); 
 		
-		
-		if( in_array( 'showonlyerrors', $options ) ) { error_reporting(E_ERROR); }
-		
-		if( in_array( 'database', $options ) ) { $dbr = $this->loadDatabase( $lang, $wiki ); }
-			
-		if( in_array( 'api', $options ) ) { $site = $this->loadPeachy( $lang, $wiki ); }
-
 // 		if( !in_array( 'addstat', $dont ) ) {
 // 			require_once( '/data/project/xtools/stats.php' );
 // 			addStatV3( $toolname );
 // 		}
-		
+
+	}
 	
+	function getWikiInfo( $lang=null, $wiki=null ) {
+		global $wgRequest;
+		
+		$obj = new stdClass();
+			$obj->lang = null;
+			$obj->wiki = null;
+			$obj->domain = null;
+			$obj->database = null;
+			$obj->error = false;
+	
+		if (!$lang || !$wiki ){
+			$lang = $wgRequest->getVal( 'lang');
+			$wiki = $wgRequest->getVal( 'wiki');
+		}
+		if (!$lang || !$wiki ){
+			$obj->error = 'no wiki specified';
+			return $obj;
+		}
+		
+		if ( $wiki == "wikipedia") {
+			$obj->lang = $lang;
+			$obj->wiki = $wiki;
+			$obj->domain = $lang.'.'.$wiki.'.org';
+			$obj->database = $lang.'wiki';
+		}
+		if ( $lang == "wikidata" || $wiki == "wikidata") {
+			$obj->lang = "www";
+			$obj->wiki = "wikidata";
+			$obj->domain = $lang.'.'.$wiki.'.org';
+			$obj->database = "wikidatawiki";
+		}
+		if ( $lang == "commons" || $wiki == "commons") {
+			$obj->lang = "commons";
+			$obj->wiki = "wikimedia";
+			$obj->domain = $lang.'.'.$wiki.'.org';
+			$obj->database = "commonswiki";
+		}
+		if ( $lang == "mediawiki" || $wiki == "mediawiki") {
+			$obj->lang = "www";
+			$obj->wiki = "mediawiki";
+			$obj->domain = $lang.'.'.$wiki.'.org';
+			$obj->database = "mediawikiwiki";
+		}
+		if ( $lang == "meta" || $wiki == "meta") {
+			$obj->lang = "meta";
+			$obj->wiki = "wikimedia";
+			$obj->domain = $lang.'.'.$wiki.'.org';
+			$obj->database = "metawiki";
+		}
+		
+		return $obj;
 	}
 	
 	function getUserInfo( $lang=null, $wiki=null, $user=null){
@@ -110,6 +167,34 @@ class WebTool {
 		$uio->isIP = ( long2ip( ip2long( $username ) ) == $username ) ? true : false;
 		
 	}
+	
+	function checkLocale(){
+		global $wgRequest, $I18N;
+
+		$this->uselang = "en";
+		
+		//1. check browser lang
+		$bl = array_keys( $wgRequest->getAcceptLang() );
+		$bl = explode("-", $bl[0]);
+		if ( array_key_exists( $bl[0], $this->i18Langs ) ) {
+			$this->uselang = $bl[0];
+		}
+		
+		//2. check session
+		$sl = $wgRequest->getSessionData( "uselang" );
+		if ($sl) {
+			$this->uselang = $sl;
+		}
+		
+		//3. check uselang setting
+		$ul = $wgRequest->getVal( "uselang" );
+		if ( array_key_exists( $ul, $this->i18Langs ) ) {
+			$wgRequest->setSessionData( "uselang", $ul);
+			$this->uselang = $ul;
+		}
+		
+		$this->generateLangLinks();
+	}
    
 	function setLimits( $mb = 512, $time = 30 ) {
 		ini_set("memory_limit", $mb . 'M' );
@@ -120,8 +205,10 @@ class WebTool {
 		global $pgVerbose;
 		
 		$pgVerbose = array();
+		
+		$wi = $this->getWikiInfo( $lang, $wiki );
 
-		return Peachy::newWiki( null, null, null, "http://$lang.$wiki.org/w/api.php" );
+		return Peachy::newWiki( null, null, null, "http://$wi->domain/w/api.php" );
 	}
 	
 	function loadDBCredentials(){
@@ -139,24 +226,24 @@ class WebTool {
 		}
 	}
 	
-	public function loadDatabase( $lang, $wiki) {
+	public function loadDatabase( $lang, $wiki, $dbnameIn=null) {
 		global $dbUser, $dbPwd;
 		
 		$this->loadDBCredentials();
-	
-		if( $wiki = 'wikipedia' || $wiki = 'wikimedia' ) $wiki = "wiki";
-		$server = $lang.$wiki.".labsdb";
-		$dbname = $lang.$wiki."_p";
 		
-		if ($wiki == "wikidata") {
-			$server = 'wikidatawiki.labsdb';
-			$dbname = 'wikidatawiki_p';
-		}
+		$wi = $this->getWikiInfo( $lang, $wiki);
+			$server = $wi->database.".labsdb";
+			$dbname = $wi->database."_p";
 
+		if ($dbnameIn){
+			$server = $dbnameIn.".labsdb";
+			$dbname = $dbnameIn."_p";
+		}
+		
 		try {	
 			$dbr = new Database2( $server, $dbUser, $dbPwd, $dbname );
-			$dbr->classType = 'peachy';
-#			$dbr->replagtime = $this->getReplag( $dbr );
+			$this->checkReplag( $dbr );
+
 			return $dbr;
 		} 
 		catch( DBError $e ) {
@@ -165,7 +252,8 @@ class WebTool {
 		}
 	}
 	
-	function getReplag( &$dbr ) {
+	function checkReplag( $dbr ) {
+		global $I18N;
 
 		$res = $dbr->query("
 				SELECT ( UNIX_TIMESTAMP() - UNIX_TIMESTAMP(rc_timestamp) ) AS replag
@@ -174,14 +262,20 @@ class WebTool {
 				LIMIT 1
 			");
 		
-		return floor( $res[0]['replag'] );
+		$secs = floor($res[0]['replag']);
+		if(  $secs > 120  ){
+			$timeMin = (int)($secs / 60);
+			$msgMin = $I18N->msg( 'minutes', array("variables" => array($timeMin)));
+			$this->replag = $I18N->msg( 'highreplag', array("variables" => array($msgMin))); 
+		}
+
 	}
 	
 	function initI18N(){
 		global $redis;
 		
 		$ttl = 86400;
-		$hash = hash( 'crc32', "xtoolsI18N".XTOOLS_REDIS_FLUSH_TOKEN );
+		$hash = hash( 'crc32', "xtoolsI18N_".XTOOLS_REDIS_FLUSH_TOKEN );
 		
 		$lc = $redis->get( $hash );
 		if ( $lc === false ) {
@@ -189,14 +283,20 @@ class WebTool {
 			$I18N = new Intuition();
 			$I18N->loadTextdomainFromFile( XTOOLS_I18_TEXTFILE, 'supercount');
 			$I18N->setDomain('supercount');
-			$I18N->langLinks = $this->generateLangLinks( $I18N->getAvailableLangs('supercount') );
 			
-			$redis->setex( $hash, $ttl, serialize($I18N) );
+#			$redis->setex( $hash, $ttl, serialize($I18N) );
 		}
 		else {
 			$I18N = unserialize($lc);
 		 	unset($lc);
 		}
+		
+		$this->i18Langs = $I18N->getAvailableLangs('supercount');
+		$this->translateMsg = '
+				<span  style="margin-right:5px" ><a href="//translatewiki.net/wiki/Special:Translate?group=tsint-supercount&amp;
+							filter=%21translated&amp;action=translate&amp;setlang='.$this->uselang.'" >('.$I18N->msg('translatelink').')</a>
+				</span>
+				';
 		
 		return $I18N;
 	}
@@ -204,14 +304,13 @@ class WebTool {
 	
 	/**
 	 * Generates a list of languages that aren't currently selected
-	 * @return string $langlinks variable
+	 * @return void
 	 */
-	function generateLangLinks( $langArr ) {
+	function generateLangLinks() {
 		
 		$langLinks = "";
-		foreach( $langArr as $langCode => $langName ) {
-			#		if( $cur_lang != $this->mLang ) {
-	
+		foreach( $this->i18Langs as $langCode => $langName ) {
+			
 			$url = "//tools.wmflabs.org".$_SERVER['REQUEST_URI'];
 	
 			if( strpos( $url, 'uselang') > 0 ) {
@@ -223,21 +322,20 @@ class WebTool {
 			else {
 				$url = $url . "?uselang=".$langCode;
 			}
-	
-			$langLinks.="<a href=\"". $url."\" title=\"$langName\" >".$langCode."</a> ";
-			#		}
+			
+			if( $langCode == $this->uselang ) {
+				$langLinks .= '<a title="'.$langName.'" >'.$langCode.'</a> ';
+			}
+			else{
+				$langLinks .= '<a href="'.$url.'" title="'.$langName.'" >'.$langCode.'</a> ';
+			}
 		}
-	
-		return $langLinks;
-	}
-	
-	function getWikiInfo() {
-		global $wgRequest, $lang, $wiki, $url;
 		
-		$wiki = $wgRequest->getSafeVal( 'wiki', 'wikipedia' );
-		$lang = $wgRequest->getSafeVal( 'lang', 'en' );
-		$url = $lang.'.'.$wiki.'.org';
+		
+		$this->langLinks = $this->translateMsg . $langLinks;
 	}
+	
+
 	
 	/**
 	 * Checks dates: Input format YYYY-MM-DD or YYYY-MM or YYYY
@@ -309,14 +407,18 @@ class WebTool {
 		if ( intval($number) == 0 && $noZero ){
 			return null;
 		}
-		$this->numberFormater->setAttribute(NumberFormatter::MAX_FRACTION_DIGITS, $decimal);
+		$this->numberFormatter->setAttribute(NumberFormatter::MAX_FRACTION_DIGITS, $decimal);
 		
-		return $this->numberFormater->format($number);
+		return $this->numberFormatter->format($number);
 	}
 	
 	public function dateFmt( $date ){
 		$datetime = new DateTime($date);
-		return $this->dateFormater->format($datetime);
+		
+		$mDate = $this->dateFormatterDate->format( $datetime );
+		$mTime = $this->dateFormatterTime->format( $datetime );
+		
+		return $mDate.", ".$mTime; //$this->dateFormatter->format($datetime);
 	}
 	
 	public function iin_array( $needle, $haystack ) {
@@ -401,6 +503,7 @@ class WebTool {
 		$this->memused = $I18N->msg( 'memory', array( "variables" => array($mem)) )." (Peak: $peak)";
 		
 		$wt = &$this;
+		header('content-type: text/html; charset: utf-8');
 		include '../templates/main.php';
 	
 		echo $perflog->getOutput();
@@ -438,13 +541,9 @@ class Database2{
 	
 	function query( $queryString ) {
 		
-		$ff = new mysqli($host, $user, $password, $database, $port, $socket);
-		$result = $ff->query();
-		
-		$mysqli = &$this->dbo;
 		$retArr = null;
-		
-		if ( $result = $mysqli->query( $queryString ) ){
+
+		if ( $result = $this->dbo->query( $queryString ) ){
 			
 			while( $row = $result->fetch_assoc() ){
 				$retArr[] = $row;				
@@ -586,28 +685,29 @@ class Database2{
 	}
 }
 
-class Perflog {
-	public $stack = array();
-
-	function add( $modul, $time ){
-		array_push( $this->stack, array("modul" => $modul, "time" => $time ));
+	class Perflog {
+		public $stack = array();
+	
+		function add( $modul, $time ){
+			array_push( $this->stack, array("modul" => $modul, "time" => $time ));
+		}
+		function getOutput(){
+			echo "<pre>"; print_r($this->stack); echo "</pre>";
+		}
 	}
-	function getOutput(){
-		echo "<pre>"; print_r($this->stack); echo "</pre>";
+	
+	/**
+	 * dummy class, if redis is not availabe
+	 * @author Hedonil
+	 */
+	class RedisFake{
+		function get(){
+			return false;
+		}
+		function set(){
+			return false;
+		}
+		function setex(){
+			return false;
+		}
 	}
-}
-/**
- * dummy class, if redis is not availabe
- * @author Hedonil
- */
-class RedisFake{
-	function get(){
-		return false;
-	}
-	function set(){
-		return false;
-	}
-	function setex(){
-		return false;
-	}
-}

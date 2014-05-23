@@ -1,6 +1,6 @@
 body {
 	background-attachment:fixed;
-	font-family: frutiger linotype,lucida grande,helvetica,arial,sans-serif;
+	font-family: helvetica,arial,sans-serif;
 	font-size: 85%;
 	margin: 0;
 	padding: 4px 1em 4px 1em;
@@ -25,13 +25,14 @@ a{
 	background-image:url("//tools.wmflabs.org/newwebtest/images/gradient.png");
 	background-repeat:repeat-x;
 
-/*	
+	
 	background-image: -webkit-linear-gradient(top, #eeeeee, #d0e4ee); 
 	background-image:    -moz-linear-gradient(top, #eeeeee, #d0e4ee); 
 	background-image:     -ms-linear-gradient(top, #eeeeee, #d0e4ee); 
 	background-image:      -o-linear-gradient(top, #eeeeee, #d0e4ee);
 	background-image:         linear-gradient(to bottom, #eeeeee, #d0e4ee); 
-*/
+
+	border-radius:5px;
 	/*http://patorjk.com/gradient-image-generator/*/
 	
 }
@@ -50,6 +51,7 @@ a{
 	color: rgb(34,34,34);
 	valign: top;
 	border-top: none;
+	border-radius:5px;
 }
 .footertext {
 	//margin: auto 0;
@@ -80,11 +82,12 @@ img {
 }
 .alert {
 	margin:0; 
-	background:#F99; 
+	background:rgb(255, 153, 153);
+	background:rgba(255, 153, 153, 0.5); 
 	font-size:120%; 
 	font-weight:bold; 
 	border:1px solid #a3bfb1; 
-	text-align:left; 
+	text-align:center; 
 	color:#000; 
 	padding:0.2em 0.4em;
 	vertical-align: top;
@@ -121,7 +124,7 @@ div.outer_bar {
 	_width:0;		/* MSIE underscore hack */
 }
 .showhide{
-	padding-left:10px;
+	padding-left:5px;
 	font-size:75%;
 	font-weight:normal;
 }

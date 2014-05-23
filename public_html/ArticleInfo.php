@@ -3,7 +3,7 @@
 class ArticleInfo {
 	
 	private $history = array();
-	private $pageLogs = array();
+	public $pageLogs = array();
 	private $tmpLogs = array();
 	private $wikidataItems = array();
 	
@@ -23,6 +23,7 @@ class ArticleInfo {
 	
 	private $AEBTypes;
 	private $perflog;
+	private $markedRevisions;
 	
 	/**
 	 * 
@@ -66,8 +67,7 @@ class ArticleInfo {
 		$this->parseHistory();
 
 		unset( $pageClass );
-		//not yet implemented in the object, so call it from outside
-		#$this->parseHistory($history, $start, $end, $site, $pageClass);
+
 		global $perflog;
 		array_push( $perflog->stack, $this->perflog);
 		
@@ -87,10 +87,11 @@ class ArticleInfo {
 	
 		try {
 			$this->history = $dbr->query("
-						SELECT rev_user_text, rev_user, rev_timestamp, rev_comment, rev_minor_edit, rev_len
+						SELECT rev_id, rev_parent_id, rev_user_text, rev_user, rev_timestamp, rev_comment, rev_minor_edit, rev_len
 						FROM revision_userindex
 						WHERE rev_page = '$this->pageid' AND rev_timestamp > 1 
-						LIMIT 20000
+						ORDER BY rev_timestamp
+						LIMIT 50000
 					");
 		} catch( Exception $e ) {
 			$this->error = $e->getMessage();
@@ -99,6 +100,34 @@ class ArticleInfo {
 
 		$this->historyCount = count( $this->history );	
 		
+		//Create an array with revision_id -> length assoc.
+		foreach ( $this->history as $i => $rev ){
+			
+			$curlen = $rev["rev_len"];
+			$this->markedRevisions[ $rev["rev_id"] ]["rev_len"] = $curlen;
+			
+			if ($i == 0 || ( isset($this->markedRevisions[ $rev["rev_id"] ]["revert"]) && $this->markedRevisions[ $rev["rev_id"] ]["revert"] )  ) 
+				continue;
+			
+			$this->markedRevisions[ $rev["rev_id"] ]["revert"] = false;
+			
+			$prevlen = $this->history[$i-1]["rev_len"];
+			
+			$curdiff = abs($curlen - $prevlen);
+			if ( $curdiff > 100 ){
+				for ($u=0; $u <10; $u++){
+					$nextlen = $this->history[$i+$u]["rev_len"];
+					
+					if ( abs($nextlen - $prevlen) < 50 ){
+						for ($x=0; $x <= $u; $x++){
+							$this->markedRevisions[ $this->history[$i+$x]["rev_id"] ]["revert"] = true;
+						}
+						break;
+					}
+				}
+			}
+		}
+#print_r($this->markedRevisions);		
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
 	
@@ -118,13 +147,10 @@ class ArticleInfo {
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
 	
-	function fetchLogRecordsApi( $site ){
-		#$logsi = $site->logs( null, false, $this->pagetitle, strtotime( $this->begin ), strtotime( $this->end ), 'older', false, array( 'type', 'timestamp', 'user', 'details' ) );
-	}
 	
 	function fetchWikidataInfo( &$api ){
 		$pstart = microtime(true);
-		global $dbUser, $dbPwd;
+		global $wt;
 		
 		$this->wikidatalink = '–';
 		
@@ -133,7 +159,7 @@ class ArticleInfo {
 		if ( intval($wbitem) == 0) { return; }
 				
 		try{
-			$dbwikidata = new Database( "wikidatawiki.labsdb", $dbUser, $dbPwd, "wikidatawiki_p");
+			$dbwikidata = $wt->loadDatabase( null, null, "wikidatawiki");
 			
 			$query = "
 					SELECT ips_site_id, ips_site_page 
@@ -152,33 +178,43 @@ class ArticleInfo {
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
 	
-	function parseLogs (){
+
+	private function parseLogs (){
 		$pstart = microtime(true);
 		
 		foreach( $this->tmpLogs as $log ) {
 			if( !in_array( $log['action'], array( 'revision' ) ) ) {
 				
-				$time = date('nY', strtotime( $log['timestamp'] ) );
-				if( !isset( $this->pageLogs[ $time ][$log['action'] ] ) ) {
-					$this->pageLogs[ $time ][$log['action']] = 0;
+				$time = date('Ym', strtotime( $log['timestamp'] ) );
+				$year = date('Y', strtotime( $log['timestamp'] ) );
+				
+#				$this->pageLogs["months"][ $time ]["duringdate"] = date('m/Y', strtotime( $log['timestamp'] ) );
+				
+				if( !isset( $this->pageLogs["months"][ $time ][$log['action'] ] ) ) {
+					$this->pageLogs["months"][ $time ][$log['action']] = 0;
 				}
-				$this->pageLogs[ $time ][$log['action']]++;
+				if( !isset( $this->pageLogs["years"][ $year ][$log['action'] ] ) ) {
+					$this->pageLogs["years"][ $year ][$log['action']] = 0;
+				}
+				
+				 
+				$this->pageLogs["months"][ $time ][$log['action']]++;
+				$this->pageLogs["years"][ $year ][$log['action']]++;
 			}
 		}
 		unset( $this->tmpLogs );
-			
-		foreach( $this->pageLogs as $date => $log ) {
-			arsort( $log );
-			$this->pageLogs[$date] = $this->actionParse( $date, $log );
-		}
 		
+		ksort( $this->pageLogs["months"] );
+		ksort( $this->pageLogs["years"] );
+
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
+	
 
 	public function parseHistory() {
 		$pstart = microtime(true);
 		
-		if ( count($this->history) == 0 ){ 
+		if ( $this->historyCount == 0 ){ 
 			$this->error = "no records";
 			return;
 		}
@@ -187,7 +223,25 @@ class ArticleInfo {
 		$data = array(
 			'first_edit' => array(
 				'timestamp' => $this->history[0]['rev_timestamp'],
+				'revid' => $this->history[0]['rev_id'],
 				'user' => $this->history[0]['rev_user_text']
+				),
+			'last_edit' => array(
+				'timestamp' =>	$this->history[ $this->historyCount-1 ]['rev_timestamp'],
+				'revid' => $this->history[ $this->historyCount-1 ]['rev_id'],
+				'user' => $this->history[ $this->historyCount-1 ]['rev_user_text']
+				),
+			'max_add' => array(
+				'timestamp' =>	null,
+				'revid' => null,
+				'user' => null,
+				'size' => -1000000,
+			),
+			'max_del' => array(
+				'timestamp' =>	null,
+				'revid' => null,
+				'user' => null,
+				'size' => 1000000,
 			),
 			'year_count' => array(),
 			'count' => 0,
@@ -195,17 +249,20 @@ class ArticleInfo {
 			'anons' => array(),
 			'year_count' => array(),
 			'minor_count' => 0,
-			'count_history' => array( 'today' => 0, 'week' => 0, 'month' => 0, 'year' => 0 )
+			'count_history' => array( 'today' => 0, 'week' => 0, 'month' => 0, 'year' => 0 ),
+			'current_size' => $this->history[ $this->historyCount-1 ]['rev_len'],
+			'textshares' => array(),
+			'textshare_total' => 0,
 		);
 		
 		$first_edit_parse = date_parse( $data['first_edit']['timestamp'] );
 	
-	
+#print_r($this->history);	
 	
 	
 		//And now comes the logic for filling said master array
 		foreach( $this->history as $id => $rev ) {
-			$data['last_edit'] = $rev['rev_timestamp'];
+
 			$data['count']++;
 			
 			//Sometimes, with old revisions (2001 era), the revisions from 2002 come before 2001
@@ -257,6 +314,29 @@ class ArticleInfo {
 			$data['editors'][$username]['last'] = date( 'Y-m-d, H:i', strtotime( $rev['rev_timestamp'] ) );	
 			$data['editors'][$username]['size'][] = number_format( ( $rev['rev_len'] / 1024 ), 2 );
 			
+			$revdiff = $rev["rev_len"] - $this->markedRevisions[ $rev["rev_parent_id"] ]["rev_len"];
+			$revert = $this->markedRevisions[ $rev["rev_id"] ]["revert"];
+			
+			if ( !$revert ){
+				if ($revdiff > 0){ 
+					$data['textshare_total'] += $revdiff;
+					$data['textshares'][$username]['all'] += $revdiff;
+				}
+				if ( $revdiff > $data["max_add"]["size"] ){
+					$data["max_add"]['timestamp'] =	$rev["rev_timestamp"];
+					$data["max_add"]['revid'] = $rev["rev_id"];
+					$data["max_add"]['user'] = $rev["rev_user_text"];
+					$data["max_add"]['size'] = $revdiff;
+				}
+				if ( $revdiff < $data["max_del"]["size"] ){
+					$data["max_del"]['timestamp'] =	$rev["rev_timestamp"];
+					$data["max_del"]['revid'] = $rev["rev_id"];
+					$data["max_del"]['user'] = $rev["rev_user_text"];
+					$data["max_del"]['size'] = $revdiff;
+				}
+			}	
+			
+			
 			if( !$rev['rev_user'] ) {
 				//Anonymous, increase counts
 				$data['anons'][] = $username;
@@ -304,17 +384,21 @@ class ArticleInfo {
 	
 	
 	//Add more general statistics
-		$data['totaldays'] = floor( ( strtotime( $data['last_edit'] ) - strtotime( $data['first_edit']['timestamp'] ) ) / 60 / 60 / 24 );
-		$data['average_days_per_edit'] = number_format( $data['totaldays'] / $data['count'], 2 );
-		$data['edits_per_month'] = ( $data['totaldays'] ) ? number_format( $data['count'] / ( $data['totaldays'] / ( 365/12 ) ), 2 ) : 0;
-		$data['edits_per_year'] =( $data['totaldays'] ) ? number_format( $data['count'] / ( $data['totaldays'] / 365 ) , 2 ) : 0;
-		$data['edits_per_editor'] = number_format( $data['count'] / count( $data['editors'] ) , 2 );
+		$dateFirst = DateTime::createFromFormat('YmdHis', $data['first_edit']['timestamp']);
+		$dateLast  = DateTime::createFromFormat('YmdHis', $data['last_edit']['timestamp']);
+		$interval = date_diff($dateLast, $dateFirst, true);
+		
+		$data['totaldays'] = $interval->format('%R%a');
+		$data['average_days_per_edit'] = $data['totaldays'] / $data['count'];
+		$data['edits_per_month'] = ( $data['totaldays'] ) ? $data['count'] / ( $data['totaldays'] / ( 365/12 ) ) : 0;
+		$data['edits_per_year'] =( $data['totaldays'] ) ? $data['count'] / ( $data['totaldays'] / 365 )  : 0;
+		$data['edits_per_editor'] = $data['count'] / count( $data['editors']);
 		$data['editor_count'] = count( $data['editors'] );
 		$data['anon_count'] = count( $data['anons'] );
-	
-	
+
 	//Various sorts
 		arsort( $data['editors'] );
+		arsort( $data['textshares'] );
 		ksort( $data['year_count'] );
 	
 	
@@ -393,7 +477,6 @@ class ArticleInfo {
 			$data['editors'][$editor]['minorpct'] = ( $info['all'] ) ? number_format( ( $info['minor'] / $info['all'] ) * 100, 2 ): 0.00;
 			
 			if( $info['all'] > 1 ) {
-#				##$data['editors'][$editor]['atbe'] = WebTool::getTimeString( (int)( ( strtotime( $info['last'] ) - strtotime( $info['first'] ) ) / $info['all'] ));
 				$secs = intval( ( strtotime( $info['last'] ) - strtotime( $info['first'] ) ) / $info['all'] );
 				$data['editors'][$editor]['atbe'] = number_format( $secs/(60*60*24),1 ).' {#days#}';
 			}
@@ -413,31 +496,7 @@ class ArticleInfo {
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
 	
-	
-	/**
-	 * Generate the log actions infobox 
-	 * @param string $date
-	 * @param string $logs
-	 * @return array
-	 */
-	private function actionParse( $date, $logs ) {
-	
-		if( strlen( $date ) == 5 ) {
-			$parseddate = '0' . substr( $date, 0, 1 ) . '/' . substr( $date, 1 );
-		}
-		else {
-			$parseddate = substr( $date, 0, 2 ) . '/' . substr( $date, 2 );
-		}
-	
-		$ret['duringdate'] = $parseddate ;
-	
-		foreach( $logs as $type => $count ) {
-			$ret[$type] = $count;
-		}
-	
-		return $ret ;
-	}
-	
+
 	
 	/**
 	 * Calculate how many pixels each year should get for the Edits per Year table

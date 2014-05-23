@@ -1,25 +1,13 @@
 <?php
-define('PATH_JPGRAPH', '/data/project/newwebtest/jpgraph');
-define('PATH_TMP_IMG', '/data/project/newwebtest/xtools/public_html/tmp');
-define("TTF_DIR", PATH_JPGRAPH.'/fonts/');
-
-#require_once(PATH_JPGRAPH."/jpgraph.php");
-#require_once(PATH_JPGRAPH."/jpgraph_pie.php");
-#require_once(PATH_JPGRAPH.'/jpgraph_line.php');
-#require_once(PATH_JPGRAPH."/jpgraph_pie3d.php");
-
-class Theme {
-}
-if(!function_exists('imageantialias'))
-{
-	function imageantialias($image, $enabled)
-	{
-		return false;
-	}
-}
 
 
 class xGraph{
+	
+	private $font_color       = '#0044CC';
+	private $background_color = '#DDFFFF';
+	private $axis_color       = '#0066CC';
+	private $grid_color       = '#3366CC';
+	
 	
 	static function makePieGoogle( $data, $title = NULL ){
 	
@@ -30,7 +18,7 @@ class xGraph{
 		}
 		
 		foreach( array_keys($data) as $nsid ){
-			$colors[] = str_replace("#", "", XtoolsTheme::GetColorList( $nsid ));
+			$colors[] = str_replace("#", "", self::GetColorList( $nsid ));
 		} 
 		
 		$chartbase = "//chart.googleapis.com/chart?";
@@ -51,25 +39,26 @@ class xGraph{
 	/**
 	 * Page history: TOP Editors
 	 */
-	static function makePieGoogleTopEditors( $total, &$data ){
-#print_r($data);		
+	static function makePieTopEditors( $title, $total, &$data ){
+		
 		$i =0;
 		foreach ($data as $user => $details){
 			$val = number_format( ($details["all"] / $total)*100,1);
 			$users[] = $user."  ($val%)";
 			$values[] = $val;
-			$colors[] = str_replace("#", "", XtoolsTheme::GetColorList( $i ));
+			$colors[] = str_replace("#", "", self::GetColorList( $i ));
 			$i++;
 			if ($i == 9) break;
 		}
 		$users[] = "others";
-		$colors[] = str_replace("#", "", XtoolsTheme::GetColorList( 100 ));
+		$colors[] = str_replace("#", "", self::GetColorList( 100 ));
 		$values[] = 100-array_sum($values);
 		
 		$chartbase = "//chart.googleapis.com/chart?";
 		$chdata = array(
 				"cht" => "p",
-				"chs" => "600x300",
+				"chtt" => $title,
+				"chs" => "500x250",
 				"chf" => "bg,s,00000000",
 				"chp" => '-1.55',
 				"chd" => "t:".implode(",", $values),
@@ -81,7 +70,6 @@ class xGraph{
 		);
 		
 		return $chartbase.http_build_query($chdata);
-		#return self::makePieTest();
 	}
 	
 	function makePieTest(){
@@ -118,7 +106,7 @@ class xGraph{
 	
 	static function makeColorTable(){
 		
-		$ff = XtoolsTheme::GetColorList();
+		$ff = self::GetColorList();
 		$i=0;
 		$list ='<table>';
 		$tds ="";
@@ -135,11 +123,8 @@ class xGraph{
 		return $list;
 	}
 	
-	static function makeArticleChartGoogle( $type, $data ){
-#print_r($data);
+	static function makeChartArticle( $type, $data, $events, $colors ){
 
-#		$numyears = count($data);
-#		$grapwidth = ($numyears * 45)+250;
 		
 		$maxsizeTotal = 0;
 		$maxeditTotal = 0;
@@ -170,8 +155,8 @@ class xGraph{
 				'cht' => 'bvg',
 				'chs' => '1000x200',
 				"chf" => "bg,s,00000000",
-				'chco' => '4D89F9,55ff55,ff00ff,737373',
-				'chd' => 't3:'.implode(',', $all).'|'.implode(',', $anon).'|'.implode(',', $minor).'|'.implode(',', $size),
+				'chco' => $colors["all"].','.$colors["anon"].','.$colors["minor"].','.$colors["size"],
+				'chd' => 't3:'.implode(',', $all).'|'.implode(',', $anon).'|'.implode(',', $minor).'|'.implode(',', $size).'|2,3,0,0,4',
 				'chdl' => 'All|IP|Minor|Article size',
 				'chdlp'=> 'r|l',
 				'chds' => 'a',
@@ -179,62 +164,20 @@ class xGraph{
 				'chxt' => 'y,y,x,r,r',
 				'chxl' => '1:||Edits||2:|'.implode('|', $years).'|4:||Size (kb)|',
 				'chxr' => '0,0,'.$maxeditTotal.'|3,0,'.$maxsizeTotal,
-
 				'chm' => 'D,737373,3,0,1,1',
+				'chem' => 'y;s=cm_repeat_color;ds=3;dp=all;d=flag,4,5,V,12,0,F00,0F0,00F,000,2,hv'
 		);
 		
 		return $chartbase.http_build_query($chdata);
 	}
 
-	static function makePie( $data, $title = NULL ){
-		$filename = date('YmdHis').rand().".png";
 		
-		$arrVal = array_values($data);
-		foreach ( $data as $nsid => $value){
-			$arrColor[] = XtoolsTheme::GetColorList($nsid);
-		}
-		
-		$graph = new PieGraph(300,280,"auto");
-		$graph->SetAntiAliasing(true);
-#		$graph->SetClipping();
-		
-		$graph->SetTheme( new XtoolsTheme() );
-		$graph->img->SetTransparent("white");
-		
-		
-		$p1 = new PiePlot( $arrVal );
-		$p1->ShowBorder(false, true);
-		
-		$p1->SetLabelType(PIE_VALUE_PERCENTAGE);
-		$p1->value->SetFormat('%-.1f %%');
-		$p1->SetLabelPos(1);
-#		$p1->SetGuideLines();		
-		$p1->value->Show();
-		
-		
-		$p1->ExplodeSlice( array_search(max($arrVal), $arrVal) );
-		$p1->SetCenter(0.5,0.5);
-		
-		$p1->SetLegends( array_keys($data) );
-		
-		$graph->legend->SetFont(FF_VERDANA, FS_NORMAL, 10 );
-		$graph->legend->SetLayout(LEGEND_VERT);
-		$graph->legend->SetColumns(1);
-		$graph->legend->SetPos(0,0.5,'left','center');
-		$graph->legend->Hide(true);
-		#$p1->SetAngle(20);
-		
-#	
-		#$graph->title->Set("A simple 3D Pie plot");
-		#$graph->title->SetFont(FF_FONT1,FS_BOLD);
-		$graph->Add($p1);
-#		$p1->SetSliceColors( $arrColor );
-		
-		$graph->Stroke(PATH_TMP_IMG.'/'.$filename);
-		
-		return $filename;
-	}
-	
+	/**
+	 * Legend for for edit counter namespace edits
+	 * @param unknown $data
+	 * @param unknown $namespaces
+	 * @return string
+	 */
 	static function makeLegendTable( &$data, &$namespaces ){
 		global $wt;
 		
@@ -243,7 +186,7 @@ class xGraph{
 		$legendNS = '<table style="font-size:85%;" >';
 		foreach ( $data as $nsid => $count ){
 
-			$color = XtoolsTheme::GetColorList($nsid);
+			$color = self::GetColorList($nsid);
 			$legendNS .= '
 			<tr>
 			<td><span style="display:inline-block; border-radius:2px; height:14px; width:14px; background-color:'.$color.' "></span></td>
@@ -259,60 +202,6 @@ class xGraph{
 		return $legendNS;
 	}
 	
-	static function makeArticleChart( $type, $data ){
-		$filename = date('YmdHis').rand().".png";
-		
-		$datay1 = array(20,15,23,15);
-		$datay2 = array(12,9,42,8);
-		$datay3 = array(5,17,32,24);
-		
-		// Setup the graph
-		$graph = new Graph(300,250);
-		$graph->img->SetAntiAliasing(false);
-		$graph->SetScale("textlin");
-		
-		$theme_class=new XtoolsTheme();
-		$graph->SetTheme($theme_class);
-		
-		$graph->title->Set('Filled Y-grid');
-		$graph->SetBox(false);
-		
-		$graph->img->SetAntiAliasing();
-		
-		$graph->yaxis->HideZeroLabel();
-		$graph->yaxis->HideLine(false);
-		$graph->yaxis->HideTicks(false,false);
-		
-		$graph->xgrid->Show();
-		$graph->xgrid->SetLineStyle("solid");
-		$graph->xaxis->SetTickLabels(array('A','B','C','D'));
-		$graph->xgrid->SetColor('#E3E3E3');
-		
-		// Create the first line
-		$p1 = new LinePlot($datay1);
-		$graph->Add($p1);
-		$p1->SetColor("#6495ED");
-		$p1->SetLegend('Line 1');
-		
-		// Create the second line
-		$p2 = new LinePlot($datay2);
-		$graph->Add($p2);
-		$p2->SetColor("#B22222");
-		$p2->SetLegend('Line 2');
-		
-		// Create the third line
-		$p3 = new LinePlot($datay3);
-		$graph->Add($p3);
-		$p3->SetColor("#FF1493");
-		$p3->SetLegend('Line 3');
-		
-		$graph->legend->SetFrameWeight(1);
-		
-		// Output line
-		$graph->Stroke(PATH_TMP_IMG.'/'.$filename);
-		
-		return $filename;
-	}
 	
 	static function makeHorizontalBar( $type, $monthTotals, $width = 500 ) {
 		global $wt;
@@ -376,8 +265,8 @@ class xGraph{
 			}
 				
 			foreach( $namespace_counts as $namespace_id => $pixel ) {
-				$msg .= '<div class="bar" style="border-left:' . $pixel . 'px solid ' . XtoolsTheme::GetColorList($namespace_id) . '" >';
-				$imsg .= '<div class="bar" style="border-left:' . $pixel . 'px solid ' . XtoolsTheme::GetColorList($namespace_id) . '" >';
+				$msg .= '<div class="bar" style="border-left:' . $pixel . 'px solid ' . self::GetColorList($namespace_id) . '" >';
+				$imsg .= '<div class="bar" style="border-left:' . $pixel . 'px solid ' . self::GetColorList($namespace_id) . '" >';
 			}
 				
 			$msg .= str_repeat( "</div>", count( $namespace_counts ) );
@@ -413,40 +302,26 @@ class xGraph{
 	
 	}
 	
-}
-
-
-
-/**
- * Xtools Theme class for jpgraph
- */
-class XtoolsTheme extends Theme
-{
-	private $font_color       = '#0044CC';
-	private $background_color = '#DDFFFF';
-	private $axis_color       = '#0066CC';
-	private $grid_color       = '#3366CC';
-
-	function GetColorList( $num = false ) {
+	static function GetColorList( $num = false ) {
 		$colors = array(
 				'0' => '#Cc0000',#'#FF005A', #red '#FF5555',
 				'1' => '#F7b7b7',
-				
+	
 				'2' => '#5c8d20',#'#008800', #green'#55FF55',
 				'3' => '#85eD82',
-				
+	
 				'4' => '#2E97E0', #blue
 				'5' => '#B9E3F9',
-
+	
 				'6' => '#e1711d',  #orange
 				'7' => '#ffc04c',
-				
-				'#FDFF98', #yellow 
-				
+	
+				'#FDFF98', #yellow
+	
 				'#5555FF',
 				'#55FFFF',
-				
-				'#0000C0',  # 
+	
+				'#0000C0',  #
 				'#008800',  # green
 				'#00C0C0',
 				'#FFAFAF',	# rosé
@@ -460,12 +335,12 @@ class XtoolsTheme extends Theme
 				102 => '#660000',
 				103 => '#000066',
 				104 => '#FAFFAF',	# caramel
-				105 => '#408345',
+					105 => '#408345',
 				106 => '#5c8d20',
 				107 => '#e1711d',	# red
 				108 => '#94ef2b',	# light green
 				109 => '#756a4a',	# brown
-				110 => '#6f1dab',	
+				110 => '#6f1dab',
 				111 => '#301e30',
 				112 => '#5c9d96',
 				113 => '#a8cd8c',	# earth green
@@ -505,11 +380,11 @@ class XtoolsTheme extends Theme
 				867 => '#FFCCFF',
 				1198 => '#FF34B3',
 				1199 => '#8B1C62',
-				
+	
 				'#61a9f3',#blue
 				'#f381b9',#pink
 				'#61E3A9',
-				
+	
 				'#D56DE2',
 				'#85eD82',
 				'#F7b7b7',
@@ -531,162 +406,25 @@ class XtoolsTheme extends Theme
 				'#BCE02E',
 				'#E0642E',
 				'#E0D62E',
-				
+	
 				'#02927F',
 				'#FF005A',
 				'#61a9f3', #blue' #FFFF55',
 		);
-		
-		if( $num === false ) {
-			return $colors; 
-		}
-		else{
-			return $colors[$num];
-		}
-		
+	
+				if( $num === false ) {
+			return $colors;
 	}
-
-	function SetupGraph($graph) {
-
-		// graph
-		/*
-		$img = $graph->img;
-		$height = $img->height;
-		$graph->SetMargin($img->left_margin, $img->right_margin, $img->top_margin, $height * 0.25);
-		*/
-		$graph->SetFrame(false);
-		$graph->SetMarginColor('white');
-		$graph->SetBackgroundGradient($this->background_color, '#FFFFFF', GRAD_HOR, BGRAD_PLOT);
-		
-		// legend
-		$graph->legend->SetFrameWeight(0);
-		$graph->legend->Pos(0.5, 0.85, 'center', 'top');
-		$graph->legend->SetFillColor('white');
-		
-		$graph->legend->SetLayout(LEGEND_HOR);
-		$graph->legend->SetColumns(3);
-		$graph->legend->SetShadow(false);
-		$graph->legend->SetMarkAbsSize(5);
-		
-		// xaxis
-		$graph->xaxis->title->SetColor($this->font_color);
-		$graph->xaxis->SetColor($this->axis_color, $this->font_color);
-		$graph->xaxis->SetTickSide(SIDE_BOTTOM);
-		$graph->xaxis->SetLabelMargin(10);
-		
-		// yaxis
-		$graph->yaxis->title->SetColor($this->font_color);
-		$graph->yaxis->SetColor($this->axis_color, $this->font_color);
-		$graph->yaxis->SetTickSide(SIDE_LEFT);
-		$graph->yaxis->SetLabelMargin(8);
-		$graph->yaxis->HideLine();
-		$graph->yaxis->HideTicks();
-		$graph->xaxis->SetTitleMargin(15);
-		
-		// grid
-		$graph->ygrid->SetColor($this->grid_color);
-		$graph->ygrid->SetLineStyle('dotted');
-		
-		
-		// font
-		$graph->title->SetColor($this->font_color);
-		$graph->subtitle->SetColor($this->font_color);
-		$graph->subsubtitle->SetColor($this->font_color);
-
-
-		//$graph->img->SetAntiAliasing();
-	}
-
-
-	function SetupPieGraph($graph) {
-		// graph
-		$graph->SetFrame(false);
-		
-		// legend
-		$graph->legend->SetFillColor('white');
-		
-		$graph->legend->SetFrameWeight(0);
-		$graph->legend->Pos(0.5, 0.80, 'center', 'top');
-		$graph->legend->SetLayout(LEGEND_HOR);
-		$graph->legend->SetColumns(4);
-		
-		$graph->legend->SetShadow(false);
-		$graph->legend->SetMarkAbsSize(5);
-		
-		// title
-		$graph->title->SetColor($this->font_color);
-		$graph->subtitle->SetColor($this->font_color);
-		$graph->subsubtitle->SetColor($this->font_color);
-		
-		$graph->SetAntiAliasing();
+	else{
+		return $colors[$num];
 	}
 	
-	function PreStrokeApply($graph) {
-		if ($graph->legend->HasItems()) {
-			$img = $graph->img;
-			$height = $img->height;
-			$graph->SetMargin($img->left_margin, $img->right_margin, $img->top_margin, $height * 0.25);
-		}
-	}
-	
-	function ApplyPlot($plot) {
-	
-		switch (get_class($plot))
-		{
-			case 'GroupBarPlot':
-				{
-					foreach ($plot->plots as $_plot) {
-						$this->ApplyPlot($_plot);
-					}
-					break;
-				}
-	
-			case 'AccBarPlot':
-				{
-					foreach ($plot->plots as $_plot) {
-						$this->ApplyPlot($_plot);
-					}
-					break;
-				}
-	
-			case 'BarPlot':
-				{
-					$plot->Clear();
-	
-					$color = $this->GetNextColor();
-					$plot->SetColor($color);
-					$plot->SetFillColor($color);
-					$plot->SetShadow('red', 3, 4, false);
-					break;
-				}
-	
-			case 'LinePlot':
-				{
-					$plot->Clear();
-					$plot->SetColor($this->GetNextColor().'@0.4');
-					$plot->SetWeight(2);
-					//                $plot->SetBarCenter();
-					break;
-				}
-	
-			case 'PiePlot':
-				{
-					$plot->SetCenter(0.5, 0.45);
-					#$plot->ShowBorder(false);
-					$plot->SetSliceColors($this->GetThemeColors());
-					break;
-				}
-	
-			case 'PiePlot3D':
-				{
-					$plot->SetSliceColors($this->GetThemeColors());
-					break;
-				}
-	
-			default:
-				{
-				}
-		}
-	}
 }
+	
+	
+}
+
+
+
+	
 	

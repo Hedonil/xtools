@@ -72,7 +72,7 @@ function getEditCounts( $dbr, $user ) {
 function getPageTemplate( $type ){
 
 	$templateForm = '
-		
+	<br />	
 	<form action="?" method="get">
 		<table>
 		<tr><td>{#username#}: </td><td><input type="text" name="user" /></td></tr>

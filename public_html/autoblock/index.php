@@ -4,19 +4,21 @@
 	require_once( '../WebTool.php' );
 	
 //Load WebTool class
-	$wt = new WebTool( 'Autoblock', 'autoblock', array("database") );
+	$wt = new WebTool( 'Autoblock', 'autoblock', array() );
 	$wt->setLimits();
 
 	$wt->content = getPageForm();
 	$wt->assign("lang", "en");
 	$wt->assign("wiki", "wikipedia");
 	
+	$user = $wgRequest->getVal( 'user' );
+	
 //Show form if &article parameter is not set (or empty)
-	if( !$wgRequest->getBool('user') ) {
+	if( !$user ) {
 		$wt->showPage();
 	}
 
-	$user = $wgRequest->getVal( 'user' );
+	$dbr = $wt->loadDatabase($lang, $wiki);
 	
 	$query = "
    		SELECT ipb_id, ipb_by_text, UNIX_TIMESTAMP(ipb_expiry) as ipb_expiry, ipb_user 
@@ -38,6 +40,7 @@
 
  function getPageForm(){ 
 	 $pageForm = '
+	 	<br />
 		<form action="?" method="get" accept-charset="utf-8">
 		<table>
 			<tr><td>{#username#}: </td><td><input type="text" name="user" value="%"/></td></tr>

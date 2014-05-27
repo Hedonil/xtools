@@ -5,10 +5,15 @@ class ArticleInfo {
 	private $history = array();
 	public $pageLogs = array();
 	private $tmpLogs = array();
-	private $wikidataItems = array();
+	
+	public $pageviews;
+	public $links;
 	
 	public $pagetitleFull = ""; //with namespace prefix
 	public $pagetitle = "";
+	public $pagetitleFullUrl;
+	public $pagewatchers;
+	
 	public $pageid = -1;
 	public $namespace = -1;
 	public $data = array();
@@ -19,7 +24,8 @@ class ArticleInfo {
 	public $error = false;
 	public $historyCount = 0;
 	
-	public $wikidatalink = "";
+	public $wikidataItemID;
+	public $wikidataItems = array();
 	
 	private $AEBTypes;
 	private $perflog;
@@ -28,96 +34,260 @@ class ArticleInfo {
 	/**
 	 * 
 	 * @param Peachy::Database $dbr
-	 * @param Peachy::Wiki $site
 	 * @param string $article
 	 * @param string $begin
 	 * @param string $end
 	 * @param unknown $noredirects
 	 */
-	function __construct( &$dbr, &$site, $article, $begin, $end, $noredirects ){
-#echo $article;		
-		try {
-			$api = $site->initPage( $article, null, $noredirects );
-		}
-		catch( Exception $e ) {
-			$this->error = $e->getMessage();
-			return;
-		}
-		
-		$this->pagetitle = $api->get_title( false );
-		$this->pagetitleFull = $api->get_title( true );
-		$this->pageid = $api->get_id();
-		$this->namespace = $api->get_namespace();
-		
+	function __construct( $dbr, $wi, $page, $begin, $end, $noredirects ){
+
 		$this->begin = $begin;
 		$this->end = $end;
+		
+		$http = new HTTP();
+		$apibase = "http://$wi->domain/w/api.php?";
+		$data = array(
+				'action' => 'query',
+				'prop' => 'info',
+				'format' => 'json',
+				'inprop' => 'protection|talkid|watched|watchers|notificationtimestamp|subjectid|url|readable',
+				'redirects' => '',
+				'indexpageids' => '',
+				'titles' => $page
+			);
+		$res = json_decode( $http->get( $apibase.http_build_query( $data ) ) );
+		$id = $res->query->pageids[0];
+		$res = $res->query->pages->{$id};
+		
+		$this->pageid = $res->pageid;
+		$this->namespace = (int)$res->ns;
+		$this->pagetitleFull = $res->title;
+		$this->pagetitleFullUrl = rawurlencode( str_replace( " ", "_", $this->pagetitleFull ) );
+		$this->pagetitle = ( $this->namespace === 0 ) ? $res->title : preg_replace('/(^.*:)(.*)/', '\2', $this->pagetitleFull, 1 ) ;
+		$this->pagewatchers = ( isset($res->watchers) ) ? (int)$res->watchers : "< 30";
+		
+		
 		
 		if( !$this->pagetitle || !$this->pageid ) {
 			$this->error = 'nosuchpage' ;
 			return;
 		}
-#print_r($this);		
-		$this->fetchWikidataInfo( $api );
 		
-		$this->fetchHistoryRecordsDB( $dbr );
-		$this->fetchLogRecordsDB( $dbr );
-		$this->loadAEBTypes();
+#print_r($this);		
+		$data = array(
+				'action' => 'query',
+				'prop' => 'pageprops',
+				'format' => 'json',
+				'pageids' => $this->pageid,
+		);
+		$res = json_decode( $http->get( $apibase.http_build_query( $data ) ) );
+		
+		$this->wikidataItemID = $res->query->pages->{$this->pageid}->pageprops->wikibase_item;
+		
+#		$this->fetchWikidataInfo();
+#		$this->fetchHistoryRecordsDB( $dbr );
+#		$this->fetchLogRecordsDB( $dbr );
+#		//$this->loadAEBTypes();
 
+		$this->fetchData( $dbr, $wi );
+		$this->historyCount = count($this->history);
+		
 		$this->parseLogs();
+		$this->parseReverts();
 		$this->parseHistory();
 
-		unset( $pageClass );
 
+		
 		global $perflog;
 		array_push( $perflog->stack, $this->perflog);
-		
 	}
 	
-	function fetchHistoryRecordsDB( &$dbr ) {
+	private function fetchData( $dbr, $wi ){
 		$pstart = microtime(true);
 		
-		$start = $end = false;
-	
-		if( $this->begin ) {
-			$conds[] = 'UNIX_TIMESTAMP(rev_timestamp) > ' . $dbr->strencode( strtotime( $this->begin ) );
-		}
-		if( $this->end) {
-			$conds[] = 'UNIX_TIMESTAMP(rev_timestamp) < ' . $dbr->strencode( strtotime( $this->end ) );
-		}
-	
-		try {
-			$this->history = $dbr->query("
+		if( $this->begin ) { $conds[] = 'UNIX_TIMESTAMP(rev_timestamp) > ' . $dbr->strencode( strtotime( $this->begin ) ); }
+		if( $this->end   ) { $conds[] = 'UNIX_TIMESTAMP(rev_timestamp) < ' . $dbr->strencode( strtotime( $this->end ) ); }
+		$query[] = array(
+				"type" => "db",
+				"src" => "this",
+				"query" => "
 						SELECT rev_id, rev_parent_id, rev_user_text, rev_user, rev_timestamp, rev_comment, rev_minor_edit, rev_len
 						FROM revision_userindex
 						WHERE rev_page = '$this->pageid' AND rev_timestamp > 1 
 						ORDER BY rev_timestamp
 						LIMIT 50000
-					");
-		} catch( Exception $e ) {
-			$this->error = $e->getMessage();
-			return;
-		}
+					",
+				);
+		
+		$title = $dbr->strencode( str_replace(" ", "_", $this->pagetitle ) );
+		$query[] = array(
+				"type" => "db",
+				"src" => "this",
+				"query" => "
+						SELECT log_action as action, log_timestamp as timestamp 
+						FROM logging_logindex 
+						WHERE log_namespace = '$this->namespace' AND log_title = '$title' AND log_timestamp > 1
+						AND log_type in ('delete', 'move', 'protect')
+					",
+				);
+		
+		$wbitem = str_replace("Q", "", $this->wikidataItemID );
+		$query[] = array(
+				"type" => "db",
+				"src" => "wikidatawiki",
+				"query" => "
+						SELECT ips_site_id, ips_site_page 
+						From wb_items_per_site
+						WHERE ips_item_id = '$wbitem'
+					",
+				);
+		
+		
+		$query[] = array(
+				"type" => "db",
+				"src" => "this",
+				"query" => "
+						SELECT count(*) as value, 'links_ext' as type FROM externallinks where el_from= '$this->pageid' 
+						UNION
+						SELECT count(*) as value, 'links_out' as type FROM pagelinks where pl_from= '$this->pageid' 
+						UNION
+						SELECT count(*) as value, 'links_in' as type FROM pagelinks where pl_namespace = '$this->namespace' and pl_title= '$title'
+						UNION
+						SELECT count(*) as value, 'redirects' as type FROM redirect WHERE rd_namespace = '$this->namespace' and rd_title= '$title'
+				",
+		);
+		
+		
+		$apibase = "http://tools-webproxy/wikiviewstats/api.php?";
+		$query[] = array(
+				"type" => "api",
+				"src" => "",
+				"query" => $apibase.http_build_query( array(
+						'request' => 'pageViews',
+						'lang' => $wi->lang,
+						'project' => $wi->wiki,
+						'wikidataid' => $this->wikidataItemID,
+						'pagetitle' => str_replace(" ", "_", $this->pagetitleFull),
+						'type' => 'daystats',
+						'latest' => '60'
+					) )
+				);
+		
+		
+		$res = $dbr->multiquery( $query );
+		
+		$this->history = $res[0];
+		$this->tmpLogs = $res[1];
+		$this->wikidataItems = $res[2];
+		$this->links = $res[3];
+		$this->pageviews = $res[4];
+		
+		unset($res);
 
-		$this->historyCount = count( $this->history );	
+#print_r($this->links);
+#print_r($this->pageviews);		
+		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
+	}
+
+//**************************************************** old fetches  ********************************************************
+// 	function fetchHistoryRecordsDB( &$dbr ) {
+// 		$pstart = microtime(true);
+		
+// 		$start = $end = false;
+	
+// 		if( $this->begin ) {
+// 			$conds[] = 'UNIX_TIMESTAMP(rev_timestamp) > ' . $dbr->strencode( strtotime( $this->begin ) );
+// 		}
+// 		if( $this->end) {
+// 			$conds[] = 'UNIX_TIMESTAMP(rev_timestamp) < ' . $dbr->strencode( strtotime( $this->end ) );
+// 		}
+	
+// 		try {
+// 			$this->history = $dbr->query("
+// 						SELECT rev_id, rev_parent_id, rev_user_text, rev_user, rev_timestamp, rev_comment, rev_minor_edit, rev_len
+// 						FROM revision_userindex
+// 						WHERE rev_page = '$this->pageid' AND rev_timestamp > 1 
+// 						ORDER BY rev_timestamp
+// 						LIMIT 50000
+// 					");
+// 		} catch( Exception $e ) {
+// 			$this->error = $e->getMessage();
+// 			return;
+// 		}
+
+// 		$this->historyCount = count( $this->history );	
+		
+		
+		
+// 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
+// 	}
+	
+// 	function fetchLogRecordsDB( &$dbr ){
+// 		$pstart = microtime(true);
+		
+// 		$title = $dbr->strencode( str_replace(" ", "_", $this->pagetitle ) );
+// 		$query = "
+// 				SELECT log_action as action, log_timestamp as timestamp 
+// 				FROM logging_logindex 
+// 				WHERE log_namespace = '$this->namespace' AND log_title = '$title' AND log_timestamp > 1
+// 					AND log_type in ('delete', 'move', 'protect')	
+// 			";
+// 		$this->tmpLogs = $dbr->query ( $query );
+		
+		
+// 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
+// 	}
+	
+	
+// 	function fetchWikidataInfo( ){
+// 		$pstart = microtime(true);
+// 		global $wt;
+		
+// 		if ( !$this->wikidataItemID ) { return; }
+// 		$wbitem = str_replace("Q", "", $this->wikidataItemID );
+
+// 		try{
+// 			$dbwikidata = $wt->loadDatabase( null, null, "wikidatawiki");
+			
+// 			$query = "
+// 					SELECT ips_site_id, ips_site_page 
+// 					From wb_items_per_site
+// 					WHERE ips_item_id = '$wbitem' 
+// 				";
+			
+// 			$this->wikidataItems  = $dbwikidata->query( $query );
+
+// 			$dbwikidata->close();
+// 		}
+// 		catch (DBError $e){
+// 			echo $e->getMessage();
+// 		}
+		
+// 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
+// 	}
+	
+	
+	
+	private function parseReverts(){
 		
 		//Create an array with revision_id -> length assoc.
 		foreach ( $this->history as $i => $rev ){
-			
+				
 			$curlen = $rev["rev_len"];
 			$this->markedRevisions[ $rev["rev_id"] ]["rev_len"] = $curlen;
-			
-			if ($i == 0 || ( isset($this->markedRevisions[ $rev["rev_id"] ]["revert"]) && $this->markedRevisions[ $rev["rev_id"] ]["revert"] )  ) 
+				
+			if ($i == 0 || ( isset($this->markedRevisions[ $rev["rev_id"] ]["revert"]) && $this->markedRevisions[ $rev["rev_id"] ]["revert"] )  )
 				continue;
-			
+				
 			$this->markedRevisions[ $rev["rev_id"] ]["revert"] = false;
-			
+				
 			$prevlen = $this->history[$i-1]["rev_len"];
-			
+				
 			$curdiff = abs($curlen - $prevlen);
 			if ( $curdiff > 100 ){
 				for ($u=0; $u <10; $u++){
 					$nextlen = $this->history[$i+$u]["rev_len"];
-					
+						
 					if ( abs($nextlen - $prevlen) < 50 ){
 						for ($x=0; $x <= $u; $x++){
 							$this->markedRevisions[ $this->history[$i+$x]["rev_id"] ]["revert"] = true;
@@ -127,57 +297,7 @@ class ArticleInfo {
 				}
 			}
 		}
-#print_r($this->markedRevisions);		
-		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
-	
-	function fetchLogRecordsDB( &$dbr ){
-		$pstart = microtime(true);
-		
-		$title = $dbr->strencode( $this->pagetitle );
-		$query = "
-				SELECT log_action as action, log_timestamp as timestamp 
-				FROM logging_logindex 
-				WHERE log_namespace = '$this->namespace' AND log_title = '$title' AND log_timestamp > 1
-					AND log_type in ('delete', 'move', 'protect')	
-			";
-		$this->tmpLogs = $dbr->query ( $query );
-		
-		
-		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
-	}
-	
-	
-	function fetchWikidataInfo( &$api ){
-		$pstart = microtime(true);
-		global $wt;
-		
-		$this->wikidatalink = '–';
-		
-		$props = $api->get_properties();
-		$wbitem = str_replace("Q", "", $props[0]["pageprops"]["wikibase_item"]);
-		if ( intval($wbitem) == 0) { return; }
-				
-		try{
-			$dbwikidata = $wt->loadDatabase( null, null, "wikidatawiki");
-			
-			$query = "
-					SELECT ips_site_id, ips_site_page 
-					From wb_items_per_site
-					WHERE ips_item_id = '$wbitem' 
-				";
-			
-			$this->wikidataItems = $dbwikidata->query( $query );
-			$this->wikidatalink = '<span><a href="//www.wikidata.org/wiki/Q'.$wbitem.'#sitelinks-wikipedia" >Q'.$wbitem.'</a> &bull; ('.count($this->wikidataItems).')</span>';
-			$dbwikidata->close();
-		}
-		catch (DBError $e){
-			echo $e->getMessage();
-		}
-		
-		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
-	}
-	
 
 	private function parseLogs (){
 		$pstart = microtime(true);
@@ -206,7 +326,7 @@ class ArticleInfo {
 		
 		ksort( $this->pageLogs["months"] );
 		ksort( $this->pageLogs["years"] );
-
+#print_r($this->pageLogs);
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
 	
@@ -305,7 +425,7 @@ class ArticleInfo {
 					'atbe' => null, 
 					'minorpct' => 0, 
 					'size' => array(), 
-					'urlencoded' => str_replace( array( '+' ), array( '_' ), urlencode( $rev['rev_user_text'] ) )
+					'urlencoded' => urlencode( $rev['rev_user_text'] ), //str_replace( array( '+' ), array( '_' ), urlencode( $rev['rev_user_text'] ) )
 				);
 			}
 			
@@ -352,13 +472,15 @@ class ArticleInfo {
 				$data['editors'][$username]['minor']++;	
 			}
 			
-			foreach ( $this->AEBTypes as $tool => $signature ){
-				if ( preg_match( $signature["regex"], $rev["rev_comment"]) ){
-					$data['automated_count']++;
-					$data['year_count'][$timestamp['year']]['automated']++;
-					$data['year_count'][$timestamp['year']]['months'][$timestamp['month']]['automated']++;
-					$data['tools'][$tool]++;
-					break;
+			if ( $checkAEB ){
+				foreach ( $this->AEBTypes as $tool => $signature ){
+					if ( preg_match( $signature["regex"], $rev["rev_comment"]) ){
+						$data['automated_count']++;
+						$data['year_count'][$timestamp['year']]['automated']++;
+						$data['year_count'][$timestamp['year']]['months'][$timestamp['month']]['automated']++;
+						$data['tools'][$tool]++;
+						break;
+					}
 				}
 			}
 			

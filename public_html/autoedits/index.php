@@ -12,14 +12,16 @@
 	$wt->assign( 'lang', 'en');
 	$wt->assign( 'wiki', 'wikipedia');
 
-
-	$user = $wgRequest->getVal( 'user' );
-	$lang = $wgRequest->getVal( 'lang' );
-	$wiki = $wgRequest->getVal( 'wiki' );
+	$wi = $wt->getWikiInfo();
+		$lang = $wi->lang;
+		$wiki = $wi->wiki;
+		$domain = $wi->domain;
 	
-	$wikibase = $lang.".".$wiki.".org";
-	$begin = $wgRequest->getVal( 'begin' );
-	$end = $wgRequest->getVal( 'end' );
+	$ui = $wt->getUserInfo();
+		$user = $ui->user;
+	
+	$begin = $wt->checkDate( $wgRequest->getVal( 'begin' ) );
+	$end   = $wt->checkDate( $wgRequest->getVal( 'end' ) );
 
 //Show form if &article parameter is not set (or empty)
 	if( !$lang || !$wiki || !$user ) {
@@ -27,27 +29,31 @@
 	}
 	
 	$dbr = $wt->loadDatabase( $lang, $wiki );
-	$cnt = new Counter( $dbr, $user, $wikibase, true );
+	$cnt = new Counter( $dbr, $user, $domain, true );
 	
-	if( !$cnt->getExists() ) {
-		$wt->error = $I18N->msg( 'nosuchuser');
-		$wt->showPage();
-	}
-
-
+	
 //Start doing the DB request
 	$data = $cnt->calcAutoEditsDB( $dbr, $begin, $end );
 	
-	$list = '<ul>';
+	$list = '<table><tr><th>Tool</th><th>Count</th></tr>';
 	foreach ( $data["tools"] as $toolname => $count  ){
-		$list .= '<li><a href="//en.wikipedia.org/wiki/'.Counter::$AEBTypes[$toolname]["shortcut"].'">'.$toolname.'</a> &ndash; '.$wt->numFmt($count).'</li>';
+		$list .= '<tr>
+				<td><a href="//en.wikipedia.org/wiki/'.Counter::$AEBTypes[$toolname]["shortcut"].'">'.$toolname.'</a></td>
+				<td>'.$wt->numFmt($count).'</td>
+				</tr>
+			';
 	}
-	$list .= '</ul>';
+	$list .= '</table>';
 	
 	$wt->content = getPageTemplate( "result" );
+	
 	$wt->assign( 'list', $list);
-	$wt->assign( 'totalauto', $wt->numFmt($data['total']) );
-	$wt->assign( 'totalall', $wt->numFmt($data['editcount']) );
+	$wt->assign( 'user', $user);
+	$wt->assign( 'domain', $domain);
+	$wt->assign( 'start', $data['start'] );
+	$wt->assign( 'end',  $data['end'] );
+	$wt->assign( 'totalauto', $wt->numFmt( $data['total'] ) );
+	$wt->assign( 'totalall', $wt->numFmt( $data['editcount'] ) );
 	$wt->assign( 'pct', $wt->numFmt( $data['pct'], 1 ) );
 	
 
@@ -77,21 +83,17 @@ function getPageTemplate( $type ){
 	
 	
 	$templateResult = '
-	
-	{#approximate#}
-	
+	<br />
+	<div>{#autoedits#}: <a href="//{$domain}/wiki/User:{$user}" ><b>{$user}</b></a> &middot; {$domain}</div>
+	<br />
 	{$list}
 	
 	<table class="wikitable">
-		<tr>
-			<td>{#totalauto#}</td><td>{$totalauto}</td>
-		</tr>
-		<tr>
-			<td>{#totalall#}</td><td>{$totalall}</td>
-		</tr>
-		<tr>
-			<td>{#autopct#}</td><td>{$pct}%</td>
-		</tr>
+		<tr><td>{#start#}</td><td>{$start}</td></tr>
+		<tr><td>{#end#}</td><td>{$end}</td></tr>	
+		<tr><td>{#autoedits#}</td><td>{$totalauto}</td></tr>
+		<tr><td>{#total#}</td><td>{$totalall}</td></tr>
+		<tr><td>{#autopct#}</td><td>{$pct}%</td></tr>
 	</table>
 	';
 				

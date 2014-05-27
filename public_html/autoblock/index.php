@@ -11,7 +11,12 @@
 	$wt->assign("lang", "en");
 	$wt->assign("wiki", "wikipedia");
 	
-	$user = $wgRequest->getVal( 'user' );
+	$wi = $wt->getWikiInfo();
+		$lang = $wi->lang;
+		$wiki = $wi->wiki;
+		
+	$ui = $wt->getUserInfo();
+		$user = $ui->user;
 	
 //Show form if &article parameter is not set (or empty)
 	if( !$user ) {
@@ -20,10 +25,11 @@
 
 	$dbr = $wt->loadDatabase($lang, $wiki);
 	
+	$userdb = $dbr->strencode ($user);
 	$query = "
    		SELECT ipb_id, ipb_by_text, UNIX_TIMESTAMP(ipb_expiry) as ipb_expiry, ipb_user 
    		FROM ipblocks 
-   		WHERE ipb_auto = 1 AND ipb_reason LIKE '%$user%'
+   		WHERE ipb_auto = 1 AND ipb_reason LIKE '%$userdb%'
    	";
 	
 	$result = $dbr->query( $query );

@@ -2,6 +2,8 @@
 
 //Requires
 	require_once( '../WebTool.php' );
+	require_once( '../Counter.php' );
+	require_once( '../Graph.php' );
 	
 //Load WebTool class
 	$wt = new WebTool( 'Pages', 'pages', array() );
@@ -11,173 +13,182 @@
 	$wt->assign("lang", "en");
 	$wt->assign("wiki", "wikipedia");
 	
-	$lang = $wgRequest->getVal('lang');
-	$wiki = $wgRequest->getVal('wiki');
 	$namespace = $wgRequest->getVal('namespace');
 	$redirects = $wgRequest->getVal('redirects'); 
 	
-	$username = $wgRequest->getVal('user');
-	$username = $wgRequest->getBool('name') ? $wgRequest->getVal('name') : $username;
-	
+	$wi = $wt->getWikiInfo();
+		$lang = $wi->lang;
+		$wiki = $wi->wiki;
+		$domain = $wi->domain;
+
+	$ui = $wt->getUserInfo();
+		$user = $ui->user;
 
 //Show form if &article parameter is not set (or empty)
-	if( !$username ) {
+	if( !$user || !$wiki || !$lang ) {
 		$wt->showPage();
 	}
-
+	
 //Get username & userid, quit if not exist
+	
 	$dbr = $wt->loadDatabase( $lang, $wiki );
-	$userData = getUserData( $dbr, $username );
-	
-	if( !$userData ) {
-		$wt->error = $I18N->msg("No such user");
-		$wt->showPage();
-	}
-	
+	$cnt = new Counter( $dbr, $user, $domain );
 
-//Execute main logic	
-	$result = getCreatedPages( $dbr, $userData["user_id"], $lang, $wiki, $namespace, $redirects );
-
-//Construct output
-	$filtertextNS = ( $result->filterns == "all" ) ? $I18N->msg('all') : $wgRequest->getVal('namespace');
-	$wikibase = $lang.".".$wiki ;
+//Execute main logic & Construct output
+	$items = $cnt->getCreatedPages( $dbr, $ui, $domain, $namespace, $redirects );
+	$namespaceList = $cnt->mNamespaces;
+	$result = makeList( $items, $namespaceList, xGraph::GetColorList(), $wi, $ui, $namespace, $redirects );
+	
+//Output stuff
+	$filtertextNS = ( $namespace == "all" ) ? $I18N->msg('all') : $namespaceList["names"][ $namespace ]." ($namespace)";
 	
 	$wt->content = getPageTemplate( 'result' );
-	$wt->assign( "totalcreated", $I18N->msg('user_total_created', array("variables" => array($userData["user_name"], $result->total, $wikibase) ) ) );
-	$wt->assign( "redirFilter", $I18N->msg('redirfilter_'.$wgRequest->getVal('redirects') ) );
-	$wt->assign( "nsFilter", $filtertextNS );
-	$wt->assign( "namespace_overview", $result->listnamespaces );
-	$wt->assign( "chartValues", $result->listnum );
-	$wt->assign( "chartText", $result->listns );
-	$wt->assign( "resultDetails", $result->list );
+		$wt->assign( 'username', $ui->user );
+		$wt->assign( 'lang', $lang );
+		$wt->assign( 'wiki', $wiki );
+		$wt->assign( 'usernameurl', $ui->userUrl );
+		$wt->assign( 'xtoolsbase', XTOOLS_BASE_WEB_DIR );
+		$wt->assign( 'domain', $wi->domain );
+		$wt->assign( 'eclink', $eclink );
+		$wt->assign( "redirFilter", $I18N->msg('redirfilter_'.$redirects ) );
+		$wt->assign( "nsFilter", $filtertextNS );
+		$wt->assign( "namespace_overview", $result->listnamespaces );
+		$wt->assign( "nschart", $result->nschart );
+		$wt->assign( "resultDetails", $result->list );
 
-unset( $base, $userData, $result );
+unset( $cnt, $items, $result, $namespaceList );
 $wt->showPage();
 
 
 /**************************************** stand alone functions ****************************************
  *
 */
-	function getUserData( $dbr, $username ){
 	
-		$user = $dbr->strencode($username);
-		$query = "
-			SELECT user_name, user_id
-			FROM user
-			WHERE user_name = '$user';
-		";
+function makeList( $items , $nsnames, $nscolors, $wi, $ui, $namespace, $redirects ){
+#print_r($nsnames);
+	$lang = $wi->lang;
+	$wiki = $wi->wiki;
+	$domain = $wi->domain;
 	
-		$result = $dbr->query( $query );
-		$userdata = $result[0];
+	$rowLimit = ( $namespace == "all" ) ? 100 : 1000;
 	
-		return $userdata;
+	$result = new stdClass(
+			$filter 	 = null,
+			$namespaces  = null,
+			$list 		 = null
+	);
+
+	$currentNamespace = "-1";
+	$currentNumber = 0;
+
+	foreach ( $items as $i => $item ){
+		$pageurl  = rawurlencode( $item["page_title"] );
+		$page 	  = str_replace("_", " ", $item["page_title"]);
+		$date 	  = date("Y-m-d", strtotime($item["timestamp"]));
+		$ns 	  = $item["namespace"];
+		$prefix   = ($ns) ? $nsnames["names"][$ns].":" : "";
+		$redirect = ( $item["page_is_redirect"] == 1 ) ? "<small> &middot; (redirect)</small>" : "";
+		$deleted  = ( $item["type"] == "arc" ) ? "<small style='color:red' > &middot; ({#deleted#}) </small>" : "";
+	
+	
+		//create a new header if namespace changes
+		if( $ns != $currentNamespace){
+	
+			$result->list .= "<tr ><td colspan=22 ><h3 id=$ns >".$nsnames["names"][$ns]."</h3></td></tr>";
+			$result->namespaces[$ns]["name"] = $nsnames["names"][$ns];
+	
+			$currentNamespace = $ns;
+			$currentNumber = 0;
+			$currentLimit = false;
+		}
+	
+		$result->namespaces[$ns]["num"]  += 1;
+		if ($redirect) { $result->namespaces[$ns]["redir"]  += 1; }
+		if ($deleted) { $result->namespaces[$ns]["deleted"]  += 1; }
+		
+		$currentNumber++;
+		
+		if ( $currentNumber > $rowLimit ){
+			if ( $currentLimit ) { continue; }
+				
+			$result->list .= '
+					<tr><td colspan=22 style="padding-left:50px; ">
+					<a href="'.XTOOLS_BASE_WEB_DIR."/pages/?user=$ui->userUrl&lang=$lang&wiki=$wiki&namespace=$ns&redirects=$redirects".'" ><strong>-{#more#}-</strong></a>
+					</td></tr>
+				';
+			$currentLimit = true;
+		}
+		else{
+
+			$result->list .= "
+					<tr>
+					<td>$currentNumber.</td>
+					<td style='max-width:50%; white-space:wrap; word-wrap:break-word' ><a href=\"//$domain/wiki/$prefix$pageurl?redirect=no\" >$page</a> $redirect $deleted</td>
+					<td style='white-space: nowrap; font-size:95%; padding-right:10px;' >$date</td>
+					<td style='white-space: nowrap' ><a href=\"//$domain/w/index.php?title=Special:Log&type=&page=$prefix$pageurl\" ><small>log</small></a> &middot; </td>
+					<td style='white-space: nowrap' ><a href=\"//".XTOOLS_BASE_WEB_DIR."/articleinfo/?lang=$lang&wiki=$wiki&page=$prefix$pageurl\" ><small>page history</small></a> &middot; </td>
+					<td style='white-space: nowrap' ><a href=\"//".XTOOLS_BASE_WEB_DIR."/topedits/?lang=$lang&wiki=$wiki&user=$ui->userUrl&page=$prefix$pageurl\" ><small>topedits</small></a></td>
+					
+					</tr>
+				";
+		}
 	}
+
+	$result->filterns = $namespace;
+	$result->filterredir = $redirects;
+	$result->total = count($items);
+	unset($items, $nsnames);
+
+	//make serialized lists for graphics & toptable
+	$sum["num"] = 0;
+	$sum["redir"] = 0;
+	$sum["deleted"] = 0;
 	
-	function getCreatedPages( &$dbr, $user_id, $lang, $wiki, $namespace, $redirects ){
+	foreach ( $result->namespaces as $num => $ns ){
+			
+		$result->listnamespaces .='
+			<tr>
+			<td style="padding-right:10px">
+				<span class=legendicon style="background-color:'.$nscolors[$num].'"> </span>
+				<a href="#'.$num.'" >'.$ns["name"].'</a>
+			</td>
+			<td class=tdnum >'.$ns["num"].'</td>
+			<td class=tdnum >'.$ns["redir"].'</td>
+			<td class=tdnum >'.$ns["deleted"].'</td>
+			</tr>
+		';
+		$sum["num"] += $ns["num"];
+		$sum["redir"] += $ns["redir"];
+		$sum["deleted"] += $ns["deleted"];
+		
+		$chLabels[] = $ns["name"];
+		$chValues[] = intval((intval($ns["num"])/intval($result->total))*100);
+		$chColors[] = str_replace("#", "", $nscolors[$num] );
+	}
+	$result->listnamespaces .='
+			<tr>
+			<td style="border-top:3px double silver;" ></td>
+			<td class=tdnum style="border-top:3px double silver" ><strong>'.$sum["num"].'</strong></td>
+			<td class=tdnum style="border-top:3px double silver" >'.$sum["redir"].'</td>
+			<td class=tdnum style="border-top:3px double silver" >'.$sum["deleted"].'</td>
+			</tr>
+			';
 	
-		$namespaceCondition = ($namespace == "all") ? "" : " and page_namespace = '".intval($namespace)."' ";
-		$redirectCondition = "";
-		if ( $redirects == "onlyredirects" ){ $redirectCondition = " and page_is_redirect = '1' "; }
-		if ( $redirects == "noredirects" ){ $redirectCondition = " and page_is_redirect = '0' "; }
-	
-		$query = "
-			SELECT DISTINCT page_namespace, page_title, page_is_redirect, page_id, rev_timestamp
-			FROM page
-			JOIN revision_userindex on page_id = rev_page
-			WHERE rev_user = '$user_id' AND rev_timestamp > 1 AND rev_parent_id = '0'  $namespaceCondition  $redirectCondition
-			ORDER BY page_namespace ASC, rev_timestamp DESC;
-		";
-	
-		$items = $dbr->query( $query );
-	
-		$nsnames = getNamespaceNames( $lang, $wiki );
-	
-		$result = new stdClass(
-				$filter 	 = null,
-				$namespaces  = null,
-				$list 		 = null
+	$chData = array(
+			'cht' => 'p',
+			'chd' => 't:'.implode(',', $chValues ),
+			'chs' => '400x150',
+			'chl' => implode('|', $chLabels ),
+			'chco' => implode('|', $chColors ),
+			'chf' => 'bg,s,00000000',
 		);
 	
-		$currentNamespace = "-1";
-		$currentNumber = 0;
-	
-		foreach ( $items as $i => $item ){
-			$pageurl  = urlencode( $item["page_title"] );
-			$page 	  = str_replace("_", " ", $item["page_title"]);
-			$date 	  = date("Y-m-d", strtotime($item["rev_timestamp"]));
-			$ns 	  = $item["page_namespace"];
-			$prefix   = $nsnames[$ns].":";
-			$redirect = ( $item["page_is_redirect"] == 1 ) ? "(redirect)" : "";
-		
-		
-			//create a new header if namespace changes
-			if( $ns != $currentNamespace){
-		
-				$result->list .= "<tr ><td colspan=4 ><h3 id=$ns >".$nsnames[$ns]."</h3></td></tr>";
-				$result->namespaces[$ns]["name"] = $nsnames[$ns];
-		
-				$currentNamespace = $ns;
-				$currentNumber = 0;
-			}
-		
-			$result->namespaces[$ns]["num"]  += 1;
-			if ($redirect != "") { $result->namespaces[$ns]["redir"]  += 1; }
-			$currentNumber++;
-		
-			$result->list .= "
-			<tr>
-			<td>$currentNumber.</td>
-			<td><a href=\"//$lang.$wiki.org/wiki/$prefix$pageurl?redirect=no\">$page</a> <small> $redirect</small></td>
-			<td style='font-size:95%' >$date</td>
-			</tr>
-			";
-		}
-	
-		$result->filterns = $namespace;
-		$result->filterredir = $redirects;
-		$result->total = count($items);
-		unset($items, $nsnames);
-	
-		//make serialized lists for graphics & toptable
-		foreach ( $result->namespaces as $num => $ns ){
-			$result->listns .= "|".$ns["name"];
-			$result->listnum .= ",".intval((intval($ns["num"])/intval($result->total))*100);
-				
-			$result->listnamespaces .='
-				<tr>
-				<td style="padding-right:5px; text-align:center;">'.$num.'</td>
-				<td style="padding-right:10px"><a href="#{$number}" >'.$ns["name"].'</a></td>
-				<td style="text-align:right" >'.$ns["num"].'</td>
-				<td style="text-align:right" >'.$ns["redir"].'</td>
-				</tr>
-			';
-		}
+	$result->nschart = '<img src="//chart.googleapis.com/chart?'.http_build_query($chData).'" alt="some graph" />';
 
-		$result->listns = urlencode( substr($result->listns, 1) );
-		$result->listnum = urlencode( substr($result->listnum, 1) );
-	
-		return $result;
-	}
-	
-	function getNamespaceNames( $lang, $wiki ) {
-	
-		$http = new HTTP();
-		$namespaces = $http->get( "http://$lang.$wiki.org/w/api.php?action=query&meta=siteinfo&siprop=namespaces&format=php" );
-		$namespaces = unserialize( $namespaces );
-		$namespaces = $namespaces['query']['namespaces'];
-		unset( $namespaces[-2] );
-		unset( $namespaces[-1] );
-	
-		$namespaces[0]['*'] = "Main";
+	return $result;
+}
 	
 	
-		$namespacenames = array();
-		foreach ($namespaces as $value => $ns) {
-			$namespacenames[$value] = $ns['*'];
-		}
-	
-		return $namespacenames;
-	}
 
 /**************************************** templates ****************************************
  *
@@ -237,27 +248,39 @@ function getPageTemplate( $type ){
 	
 	$templateResult = '
 	
-	<p>{$totalcreated}&nbsp;({#namespace#}: {$nsFilter}, {#redirects#}: {$redirFilter} )</p>
-	<table>
-		<tr>
-		<td>
-		<table style="margin-top: 10px" >
+	<div class="caption" >
+			<a style=" font-size:2em; " href="http://{$domain}/wiki/User:{$usernameurl$}">{$username$}</a>
+			<span style="padding-left:10px;" > &bull;&nbsp; {$domain} </span>
+			<p>Links: &nbsp;
+				<a href="//{$xtoolsbase}/ec/?lang={$lang}&wiki={$wiki}&user={$usernameurl$}" >ec</a>
+			</p>
+	</div>
+	<h3>{#namespacetotals#} <span class="showhide" >[<a href="javascript:switchShow( \'nstotals\' )">show/hide</a>]</span></h3>
+	<div id="nstotals">
+		<p style="margin-top: 0px;" >{#namespace#}: {$nsFilter} &middot; {#redirects#}: {$redirFilter}</p>
+		<table>
 			<tr>
-			<th>NS</th>
-			<th>NS name</th>
-			<th>Pages</th>
-			<th style="padding_left:5px">&nbsp;&nbsp;(Redirects)</th>
+			<td>
+			<table class="leantable" style="margin-top: 10px; table-layout:fixed" >
+				<tr>
+				<th>{#namespace#}</th>
+				<th>Pages</th>
+				<th style="padding_left:5px">&nbsp;&nbsp;{#redirects#}</th>
+				<th style="padding_left:5px">&nbsp;&nbsp;{#deleted#}</th>
+				</tr>
+				{$namespace_overview}
+			</table>
+			</td>
+			<td>
+				{$nschart}
+			</td>
 			</tr>
-			{$namespace_overview}
 		</table>
-		</td>
-		<td><img src="//chart.googleapis.com/chart?cht=p3&amp;chd=t:{$chartValues}&amp;chs=550x140&amp;chl={$chartText}&amp;chco=599ad3|f1595f|79c36a|f9a65a|727272|9e66ab|cd7058|ff0000|00ff00&amp;chf=bg,s,00000000" alt="minor" /></td>
-		</tr>
-	</table>
-	
+	</div>	
 	<table>
 		{$resultDetails}
 	</table>
+	<br />
 	';
 	
 	if( $type == "form" ) { return $templateForm; }

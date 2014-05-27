@@ -2,7 +2,7 @@
 
 //Requires
 	require_once( '../WebTool.php' );
-	require_once( 'base.php' );
+	require_once( '../RangeContribs.php' );
 
 //Load WebTool class
 	$wt = new WebTool( 'Range contributions', 'rangecontribs', array() );
@@ -15,18 +15,19 @@
 	
 //Checks for alternative requests for compatibility (ips = legacy)
 	$list  = $wgRequest->getText( 'ips' );
-	$list  = $wgRequest->getBool('list') ? $wgRequest->getVal('list') : $list; 
+	$list  = $wgRequest->getText( 'list', $list ); 
 	
 	$limit = $wgRequest->getVal( 'limit', '20');
-
-	$lang  = $wgRequest->getVal( 'lang' );
-	$wiki  = $wgRequest->getVal( 'wiki' );
-	
 	$begin = $wt->checkDate( $wgRequest->getVal('begin') );
 	$end   = $wt->checkDate( $wgRequest->getVal('end') );
 	
+	$wi = $wt->getWikiInfo();
+		$lang  = $wi->lang;
+		$wiki  = $wi->wiki;
+		$domain = $wi->domain;
 
-	if( !$list ){
+		
+	if( !$list || !$wiki || !$lang ){
 		$wt->showPage();
 	}
 	
@@ -40,34 +41,85 @@
 	$rc = new RangeContribs( $dbr, $list, $begin, $end, $limit );
 	
 
-//Get a list of unique, matching (existing) IP's
-	$http = new HTTP();
-	$ipList = $rc->getIPInformation( $http );
-
-//Start the calculation
+//Make output
 	$site = $wt->loadPeachy( $lang, $wiki );
 	$namespaces = $site->get_namespaces();
-	$list = makeListByName( $rc->getContribs(), $namespaces );
+	
+	$listsum = makeListSum( $rc->getItems() ); 
+	$listcontribs = makeListByName( $rc->getContribs(), $namespaces );
 
 	
 //Output stuff	
 	$wt->content = getPageTemplate( "result" );
-		
-	$wt->assign( "cidr", $cidr_info['begin']."/".$cidr_info['suffix']);
-	$wt->assign( "ip_start", $cidr_info['begin']);
-	$wt->assign( "ip_end", $cidr_info['end']);
-	$wt->assign( "ip_number", $cidr_info['count']);
-	$wt->assign( "ip_found", count($matchingIPs));
-	$wt->assign( "ipList", $ipList);
-	$wt->assign( "list", $list);
-
+	
+	$wt->assign( "listsum", $listsum );
+	$wt->assign( "listdetail", $listcontribs );
+	
+	$wt->assign( 'xtoolsbase', XTOOLS_BASE_WEB_DIR );
+	$wt->assign( 'domain', $domain );
+	$wt->assign( 'lang', $lang );
+	$wt->assign( 'wiki', $wiki );
+	
 unset( $base, $ipList, $list );
 $wt->showPage();
 
 
+
+
+function makeListSum( $items ){
+	global $wt;
+	
+	$list = "<table><tr>";
+	foreach( $items["cidr"] as $i => $cidr ){
+		$list .= '
+			<td style="padding-right:15px;" >
+			<table>
+			<tr><td>{#cidr#}: 	  </td><td>'.$i.'</td></tr>
+			<tr><td>{#ip_start#}: </td><td>'.$cidr["cidrinfo"]["begin"].'</td></tr>
+			<tr><td>{#ip_end#}:   </td><td>'.$cidr["cidrinfo"]["end"].'</td></tr>
+			<tr><td>{#ip_number#}:</td><td>'.$cidr["cidrinfo"]["count"].'</td></tr>
+			</table>
+			</td>
+		';
+	}
+	$list .= "</tr></table><br />";
+	
+	foreach ( $items["byrange"] as $group => $item ){
+		
+		$header = "<p><b>$group</b></p> ";
+		if ( isset($item["rangeinfo"]) ) {
+			$range = $item["rangeinfo"];
+			$header = "
+				<p><b>Range:</b> $range->inetnum &nbsp; Provider: $range->netname &middot; $range->descr &middot; $range->country &nbsp;<img src=../images/flags/png/".strtolower($range->country).".png /></p>
+			";
+		}
+		$list .= $header;
+		
+		$list .= "<table>";
+		foreach ( $item["list"] as $user => $count ){
+			
+			$usernameurl = rawurlencode( $user );
+			
+			$list .= '
+				<tr>
+				<td><a href="#'.$usernameurl.'" >'.$user.'</a></td>
+				<td class="tdnum" style="padding-left:1em; padding-right:1em" >'.$wt->numFmt( $count ).'</td>
+				<td><small>
+					<a href="//{$domain}/w/index.php?title=Special%3ALog&type=block&user=&page=User%3A'.$usernameurl.'&year=&month=-1&tagfilter=" >block log</a> &middot; 
+					<a href="//{$xtoolsbase}/ec/?lang={$lang}&wiki={$wiki}&user='.$usernameurl.'" >ec</a> &middot; 
+					<a href="//tools.wmflabs.org/guc/?user='.$usernameurl.'" >guc</a> &middot; 
+				</td></small>
+				</tr>
+			';
+		}
+		$list .= "</table>";
+	}
+	
+	return $list;
+}
+
 function makeListByName( $contribs, $namespaces ){
-	global $lang, $wiki;
-	$wikibase = $lang.".".$wiki.".org";
+	
 
 #	if( count( $contribs ) == 0 ) { return "no results"; }
 
@@ -94,8 +146,8 @@ function makeListByName( $contribs, $namespaces ){
 		if( $oldip != $row['rev_user_text'] ){
 
 			$list .= "<tr ><td colspan=8 ><h4 id='".$row['rev_user_text']."' style='margin:15 0 5 0;'>";
-			$list .= '<a href="//'.$wikibase.'/wiki/User:'.$row['rev_user_text'].'" >'.$row['rev_user_text'].'</a>';
-			$list .= ' (<a href="//'.$wikibase.'/wiki/User_talk:'.$row['rev_user_text'].'" title="User talk:'.$row['rev_user_text'].'">talk</a>)';
+			$list .= '<a href="//{$domain}/wiki/User:'.$row['rev_user_text'].'" >'.$row['rev_user_text'].'</a>';
+			$list .= ' (<a href="//{$domain}/wiki/User_talk:'.$row['rev_user_text'].'" title="User talk:'.$row['rev_user_text'].'">talk</a>)';
 			$list .= ' <span style="font-weight:normal"> &middot; total: '.$row["sum"].'</span>';
 			$list .= '</h4></td></tr>';
 
@@ -106,10 +158,10 @@ function makeListByName( $contribs, $namespaces ){
 		$list .= "<tr>";
 		$list .= "<td>&nbsp;&nbsp;&nbsp;</td>";
 		$list .= '<td style="font-size:95%; white-space:nowrap;">'.$date.' &middot; </td> ';
-		$list .= '<td>(<a href="//'.$wikibase.'/w/index.php?title='.$urltitle.'&amp;diff=prev&amp;oldid='.urlencode($row['rev_id']).'" title="'.$title.'">diff</a>)</td>';
-		$list .= '<td>(<a href="//'.$wikibase.'/w/index.php?title='.$urltitle.'&amp;action=history" title="'.$title.'">hist</a>)</td>';
+		$list .= '<td>(<a href="//{$domain}/w/index.php?title='.$urltitle.'&amp;diff=prev&amp;oldid='.urlencode($row['rev_id']).'" title="'.$title.'">diff</a>)</td>';
+		$list .= '<td>(<a href="//{$domain}/w/index.php?title='.$urltitle.'&amp;action=history" title="'.$title.'">hist</a>)</td>';
 		//if( $row['rev_minor_edit'] == '1' ) { $list .= '<span class="minor">m</span>'; }
-		$list .= '<td> &middot; <a href="//'.$wikibase.'/wiki/'.$urltitle.'" title="'.$title.'">'.$title.'</a>‎ ('.$row['rev_comment'].')</td> ';
+		$list .= '<td> &middot; <a href="//{$domain}/wiki/'.$urltitle.'" title="'.$title.'">'.$title.'</a>‎ ('.$row['rev_comment'].')</td> ';
 		$list .= "</tr>";
 
 		$seccount++;
@@ -167,18 +219,11 @@ function getPageTemplate( $type ){
 
 	
 	$templateResult = '
-			
-	<table>
-		<tr><td><b>{#cidr#}: 	 </b></td><td>{$cidr}</td></tr>
-		<tr><td><b>{#ip_start#}: </b></td><td>{$ip_start}</td></tr>
-		<tr><td><b>{#ip_end#}:   </b></td><td>{$ip_end}</td></tr>
-		<tr><td><b>{#ip_number#}:</b></td><td>{$ip_number}</td></tr>
-		<tr><td><b>{#ip_found#}: </b></td><td>{$ip_found}</td></tr>
-	</table>
+
 	<h3>{#summary#}</h3>
-		{$ipList}
+		{$listsum}
 	<h3>{#detailed_results#}</h3>
-		{$list}
+		{$listdetail}
 	<br />
 	';
 	

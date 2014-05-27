@@ -14,36 +14,24 @@
 	$wt->assign("lang", "en");
 	$wt->assign("wiki", "wikipedia");
 	
+	$wi = $wt->getWikiInfo();
+		$lang = $wi->lang;
+		$wiki = $wi->wiki;
+		$domain = $wi->domain;
 	
-	$user = $wgRequest->getVal('user');
-	$user = $wgRequest->getVal('name', $user );
+	$ui = $wt->getUserInfo();
+		$user = $ui->user;
 	
-	$user = str_replace("_", " ", $user);
-	
-//Show form if &article parameter is not set (or empty)
-	if( !$user ) {
-		$wt->showPage($wt);
+//Show form if user is not set (or empty)
+	if( !$user || !$lang || !$wiki ) {
+		$wt->showPage();
 	}
 
-	$wiki = $wgRequest->getVal('wiki');
-	$lang = $wgRequest->getVal('lang');
-
-	$url = $lang.'.'.$wiki.'.org';
-	$wikibase = $url;
-	if( $wiki == 'wikidata' ) {
-	    $lang = 'www';
-	    $wiki = 'wikidata';
-	    $wikibase= $url = 'www.wikidata.org';
-	}
-
+		
 //Create new Counter object
 	$dbr = $wt->loadDatabase( $lang, $wiki);
 	
-	$cnt = new Counter( $dbr, $user, $wikibase );
-
-	if( !$cnt->getExists() ) {
-	   $wt->toDie( 'nosuchuser', $cnt->getName() );
-	}
+	$cnt = new Counter( $dbr, $user, $domain );
 
 	$graphNS = xGraph::makePieGoogle( $cnt->getNamespaceTotals() );
 	$legendNS = xGraph::makeLegendTable(  $cnt->getNamespaceTotals(), $cnt->getNamespaces() );
@@ -61,48 +49,54 @@
 	$uniqueEdits = $cnt->getUniqueArticles();
 	ksort($uniqueEdits['namespace_specific']);
 	
-	$num_to_show = 10;
-	$out = null;
-	
+	$num_to_show = 15;
+
+	$out = "<table>";
 	foreach( $uniqueEdits['namespace_specific'] as $namespace_id => $articles ) {
 
-		$out .= '<table class="collapsible collapsed"><tr><th>' . $wgNamespaces['names'][$namespace_id] . '</th></tr><tr><td>';
-		$out .= "<ul>\n";
+		$out .= '<tr><td colspan=22 ><h3>' . $wgNamespaces['names'][$namespace_id] . '</h3></td></tr>';
 	
 		asort( $articles );
 		$articles = array_reverse( $articles );
 	
 		$i = 0;
 		foreach ( $articles as $article => $count ) {
-			if( $i == $num_to_show ) break;
-			if( $namespace_id == 0 ) {
-				$nscolon = '';
+			if( $i == $num_to_show ) {
+				$out .= "<tr><td colspan=22 style='padding-left:50px; padding-top:10px;'><a href=\"//".XTOOLS_BASE_WEB_DIR."/topedits/?lang=$lang&wiki=$wiki&user=$user&namespace=${namespace_id}\" >-".$I18N->msg('more')."-</a></td></tr>";
+				break;
 			}
-			else {
+			
+			$nscolon = '';
+			if( $namespace_id != 0 ) {
 				$nscolon = $wgNamespaces['names'][$namespace_id].":";
 			}
-			$articleencoded = urlencode( $article );
-			$articleencoded = str_replace( '%2F', '/', $articleencoded );
-			$trimmed = substr($article, 0, 50).'...';
-			$out .= '<li>'.$count." - <a href='//$lang.$wiki.org/wiki/".$nscolon.$articleencoded.'\'>';
-			if(strlen(substr($article, 0, 50))<strlen($article)) {
-				$out .= $trimmed;
-			}
-			else {
-				$out .= $article;
-			}
-			$out .= "</a></li>\n";
+
+			$articleencoded = rawurlencode( str_replace(" ", "_", $nscolon.$article ) );
+			$articleencoded = str_replace( array('%2F', '%3A'), array('/', ':'), $articleencoded );
+			$article = str_replace("_", " ", $nscolon.$article);
+			
+			$out .= "
+				<tr>
+				<td class=tdnum >$count</td>
+				<td><a href=\"//$domain/wiki/$articleencoded\" >$article</a></td>
+				<td><a href=\"//$domain/w/index.php?title=Special:Log&type=&page=$articleencoded\" ><small>log</small></a> &middot; </td>
+				<td><a href=\"//".XTOOLS_BASE_WEB_DIR."/articleinfo/?lang=$lang&wiki=$wiki&page=$articleencoded\" ><small>page history</small></a> &middot; </td>
+				<td><a href=\"//".XTOOLS_BASE_WEB_DIR."/topedits/?lang=$lang&wiki=$wiki&user=${user}&page=$articleencoded\" ><small>topedits</small></a></td>
+			 ";
+							
 			$i++;
 		}
-		$out .= "</ul></td></tr></table><br />";
-	}
+		
+	} 
+	$out .= "</table><br />";
 	
 //Make list of automated edits tools
-	$list = '<br /><table>';
+	$list = '<table>';
 	foreach ( $cnt->getAEBTypes() as $tool => $sth){
+		$num = ( isset($cnt->mAutoEditTools[$tool]) ) ? $wt->numFmt( $cnt->mAutoEditTools[$tool] ) : 0;
 		$list .= '
 				<tr>
-				</td><td class="tdnum" style="min-width: 50px; ">'.$wt->numFmt($cnt->mAutoEditTools[$tool]).'</td>
+				</td><td class="tdnum" style="min-width: 50px; ">'.$num.'</td>
 				<td style="padding-left:10px;"><a href="//en.wikipedia.org/wiki/'.$sth["shortcut"].'" >'.$tool.'</a>
 				</tr>';
 	}
@@ -110,12 +104,22 @@
 	
 	$wt->assign( 'autoeditslist', $list);
 	unset( $list );
+	
 
 //Make topten sulinfo table
-	$list = '<table><tr><td colspan=2 style="color:gray;" ><a href="//en.wikipedia.org/wiki/Wikipedia:Unified_login" >SUL</a> editcounts (approx.):</td></tr>';
+	$list = '<table><tr><td colspan=2 style="color:gray;" title="SUL = Single User Login / Unififed lgoin" >SUL editcounts ({#approximate#}):</td></tr>';
 	$i = 0;
-	foreach ( $cnt->wikis as $wiki => $editcount ){
-		$list .= '<tr><td>'.preg_replace('/^.*\/\/(.*)\.org/', '\1', $wiki).'</td><td class="tdgeneral" >'.$wt->numFmt($editcount).'</td></tr>';
+	foreach ( $cnt->wikis as $sulwiki => $editcount ){
+		$suldomain = preg_replace('/^.*\/\/(.*)\.org/', '\1', $sulwiki);
+		$sullang = preg_replace('/^.*\/\/(.*)\..*\.org/', '\1', $sulwiki);
+		$sulwiki = preg_replace('/^.*\/\/.*\.(.*)\.org/', '\1', $sulwiki);
+		$list .= '
+			<tr>
+			<td>'.$suldomain.'</td>
+			<td class="tdgeneral" ><a href="//'.XTOOLS_BASE_WEB_DIR."/ec/?user=$ui->userUrl&lang=$sullang&wiki=$sulwiki".'" >'.$wt->numFmt($editcount).'</a></td>
+			</tr>
+		';
+		
 		$i++;
 		if ($i > 10 )break;
 	}
@@ -124,25 +128,26 @@
 	$wt->assign( 'sulinfotop', $list);
 	unset( $list );
 
+	
+//Output stuff
 	$groupsGlobal = ($cnt->mGroupsGlobal) ? " &bull; global: ".implode(", ", $cnt->mGroupsGlobal) : ""; 
 	
-	
-	$wt->assign( "lang", $lang);
-	$wt->assign( "wiki", $wiki);
+	$wt->assign( 'xtoolsbase', XTOOLS_BASE_WEB_DIR );
+	$wt->assign( "lang", $lang );
+	$wt->assign( "wiki", $wiki );
 	$wt->assign( "userid", $cnt->mUID );
 	$wt->assign( "username", $cnt->getName() ); 
 	$wt->assign( "usernameurl", rawurlencode($cnt->getName()) );
-	$wt->assign( "url", $url );
+	$wt->assign( "userprefix", rawurlencode($cnt->mNamespaces["names"][2] ) );
+	$wt->assign( "domain", $domain );
 	$wt->assign( "loadwiki", "&wiki=$wiki&lang=$lang" );
 	$wt->assign( "groups", implode( ', ', $cnt->mGroups) . $groupsGlobal );
 	
-	if( $cnt->getLive() > 0) {}
-		
 	$wt->assign( "firstedit", 		$wt->dateFmt( $cnt->mFirstEdit) );
 	$wt->assign( "latestedit", 		$wt->dateFmt( $cnt->mLatestEdit) );
 	$wt->assign( "unique", 	  		$wt->numFmt( $cnt->getUnique() ) );
 	$wt->assign( "average",   		$wt->numFmt( $cnt->getAveragePageEdits(),2 ) );
-	$wt->assign( "pages_created",   $wt->numFmt( $cnt->mCreated ) );
+	$wt->assign( "pages_created",   $wt->numFmt( $cnt->mCreated + $cnt->mDeletedCreated ) );
 	$wt->assign( "pages_moved",   	$wt->numFmt( $cnt->mMoved ) );
 	$wt->assign( "uploaded",   		$wt->numFmt( $cnt->mUploaded ) );
 	$wt->assign( "uploaded_commons",$wt->numFmt( $cnt->mUploadedCommons ) );
@@ -165,22 +170,20 @@
 	$wt->assign( "delete_rev", 	  	$wt->numFmt( $cnt->mDeleteRev ) );
 	
 	$wt->assign( "namespace_legend", $legendNS );
-	#$wt->assign( "graph", $graph->pie( $I18N->msg('namespacetotals') ) );
 	$wt->assign( "namespace_graph", '<img src="'.$graphNS.'"  />' );
 	
 	$wt->assign( "yearcounts", $graphYears );
 	
 	
-	if( $lang == "de" && !$cnt->optin ) {
-		$wt->assign( "monthcounts", $I18N->msg( "nograph", array( "variables"=> array( $cnt->getName(), $url) )));
-		$wt->assign( "topedited", '');
-	}
-	else {
+	if( $cnt->optin ) {
 		$wt->assign( "monthcounts", $graphMonths );
 		$wt->assign( "topedited", $out );
 	}
+	else {
+		$wt->assign( "monthcounts", $I18N->msg( "nograph", array( "variables"=> array( $cnt->getOptinLinkLocal(), $cnt->getOptinLinkGlobal() ) )));
+		$wt->assign( "topedited", '');
+	}
 
-	$wt->assign( 'exp_color_table', ''); //xGraph::makeColorTable());
 
 
 unset( $out, $graph, $cnt );
@@ -207,21 +210,17 @@ function getPageTemplate( $type ){
 	
 	$templateResult = '
 		
-	<script type="text/javascript">
-	function switchShow( id ) {
-		if(document.getElementById(id).style.display == "none") {
-			document.getElementById(id).style.display = "block";
-		}
-		else{
-			document.getElementById(id).style.display = "none";
-		}
-	}
-	</script>
-	<div style="text-align:center; font-weight:bold; margin-top:1em" >
-			<a style=" font-size:2em; " href="http://{$url$}/wiki/User:{$usernameurl$}">{$username$}</a>
-			<span style="padding-left:10px;" > &bull;&nbsp; {$url} </span>
+	<div class="caption" >
+			<a style=" font-size:2em; " href="http://{$domain}/wiki/User:{$usernameurl$}">{$username$}</a>
+			<span style="padding-left:10px;" > &bull;&nbsp; {$domain} </span>
+			<p>Links: &nbsp;
+				<a href="//{$domain}/w/index.php?title=Special%3ALog&type=block&user=&page=User%3A{$usernameurl}&year=&month=-1&tagfilter=" >block log</a> &middot; 
+				<a href="//tools.wmflabs.org/supercount/?user={$usernameurl}&project={$lang}.{$wiki}" >User Analysis Tool</a> &middot;
+				<a href="//tools.wmflabs.org/guc/?user={$usernameurl}" >Global user contributions</a> &middot; 
+				<a href="//tools.wmflabs.org/wikiviewstats/?lang={$lang}&wiki={$wiki}&page={$userprefix}:{$usernameurl}*" >Pageviews in userspace</a> &middot; 
+			</p>
 	</div>
-	<h3  style="margin-top:-1.1em;">{#generalstats#} <span class="showhide">[<a href="javascript:switchShow( \'generalstats\' )">show/hide</a>]</span></h3>
+	<h3  style="">{#generalstats#} <span class="showhide">[<a href="javascript:switchShow( \'generalstats\' )">show/hide</a>]</span></h3>
 	<div id = "generalstats">
 		<table>
 			<tr><td>{#userid#}:</td><td style="padding-left:10px;" >{$userid}</td></tr>
@@ -237,7 +236,7 @@ function getPageTemplate( $type ){
 				<tr><td>{#unique#}:</td><td><span class="tdgeneral" >{$unique$}</span></td>	</tr>
 				<tr><td>{#average#}:</td><td><span class="tdgeneral" >{$average$}</span></td></tr>
 				<tr><td colspan=20 ></td></tr>
-				<tr><td>{#pages_created#}:</td><td><span class="tdgeneral" >{$pages_created}</span></td></tr>
+				<tr><td>{#pages_created#}:</td><td><span class="tdgeneral" ><a href="//{$xtoolsbase}/pages/?user={$usernameurl}&lang={$lang}&wiki={$wiki}&namespace=all&redirects=none" >{$pages_created}</a></span></td></tr>
 				<tr><td>{#pages_moved#}:</td><td><span class="tdgeneral" >{$pages_moved}</span></td></tr>
 				<tr><td>{#files_uploaded#}:</td><td><span class="tdgeneral" >{$uploaded}</span></td></tr>
 				<tr><td>{#files_uploaded#} (Commons):</td><td><span class="tdgeneral" >{$uploaded_commons}</span></td></tr>
@@ -253,10 +252,10 @@ function getPageTemplate( $type ){
 			<td style="vertical-align:top; padding-left:70px;" >
 			<table >
 				<tr><td style="color:gray">Actions:</td></td></tr>
-				<tr><td>{#thank#}:</td><td class="tdgeneral">{$thanked} <small>x</small></td></tr>
-				<tr><td>{#approve#}:</td><td class="tdgeneral">{$approve} <small>x</small></td></tr>
+				<tr><td>{#thank#}:</td><td class="tdgeneral"><a href="//{$domain}/w/index.php?title=Special%3ALog&type=thanks&user={$usernameurl}&page=&year=&month=-1&tagfilter=" >{$thanked} <small>x</small></a></td></tr>
+				<tr><td>{#approve#}:</td><td class="tdgeneral"><a href="//{$domain}/w/index.php?title=Special%3ALog&type=review&user={$usernameurl}&page=&year=&month=-1&tagfilter=&hide_patrol_log=1&hide_review_log=1&hide_thanks_log=1" >{$approve} <small>x</small></a></td></tr>
 				<tr><td>{#unapprove#}:</td><td class="tdgeneral">{$unapprove} <small>x</small></td></tr>
-				<tr><td>{#patrol#}:</td><td class="tdgeneral">{$patrol} <small>x</small></td></tr>
+				<tr><td>{#patrol#}:</td><td class="tdgeneral"><a href="//{$domain}/w/index.php?title=Special%3ALog&type=patrol&user={$usernameurl}&page=&year=&month=-1&tagfilter=" >{$patrol} <small>x</small></a></td></tr>
 				<tr><td colspan=2></td></tr>
 				<tr><td style="color:gray">{#admin_actions#}</td></td></tr>
 				<tr><td>{#block#}:</td><td class="tdgeneral">{$block} <small>x</small></td></tr>

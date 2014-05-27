@@ -124,10 +124,11 @@ class xGraph{
 	}
 	
 	static function makeChartArticle( $type, $data, $events, $colors ){
-
+		global $I18N;
 		
 		$maxsizeTotal = 0;
 		$maxeditTotal = 0;
+		$u = 0;
 		foreach( $data as $year => $values){
 			$years[] = $year; 
 			$all[] = $values["all"];
@@ -142,32 +143,48 @@ class xGraph{
 			
 			if ( $values["all"] > $maxeditTotal ){ $maxeditTotal = $values["all"]; }
 			if ( $maxsize > $maxsizeTotal ) { $maxsizeTotal = $maxsize; }
+			
+			if ( isset($events[ $year ]["protect"]) ){
+				$diamondsize = 10 + $events[ $year ]["protect"] * 3;
+				$eventmarker[] = "o,".$colors["protect"].",3,$u,$diamondsize.0,-0.1";
+			}
+			
+			$u++;
 		}
 		
 		//scaling edits to size
 		$factor = $maxeditTotal / $maxsizeTotal;
 		foreach ( $tmpssize as $value){
 			$size[] = intval( $value * $factor );
+			$dummyline[] = (int)($maxeditTotal - $maxeditTotal * 0.1 );
 		}
+		
+		if ( $eventmarker ){ 
+			$msgProtect = "|Protected";
+		}
+		$msgAll = $I18N->msg('all');
+		$msgMinor = $I18N->msg('minor');
+		$msgPagesize = $I18N->msg('pagesize');
 	
 		$chartbase = "//chart.googleapis.com/chart?";
 		$chdata = array(
 				'cht' => 'bvg',
 				'chs' => '1000x200',
 				"chf" => "bg,s,00000000",
-				'chco' => $colors["all"].','.$colors["anon"].','.$colors["minor"].','.$colors["size"],
-				'chd' => 't3:'.implode(',', $all).'|'.implode(',', $anon).'|'.implode(',', $minor).'|'.implode(',', $size).'|2,3,0,0,4',
-				'chdl' => 'All|IP|Minor|Article size',
+				'chco' => $colors["all"].','.$colors["anon"].','.$colors["minor"].','.$colors["size"].','.$colors["protect"],
+				'chd' => 't3:'.implode(',', $all).'|'.implode(',', $anon).'|'.implode(',', $minor).'|'.implode(',', $size).'|'.implode(',', $dummyline),
+				'chdl' => "$msgAll|IPs|$msgMinor|$msgPagesize$msgProtect",
 				'chdlp'=> 'r|l',
 				'chds' => 'a',
 				'chbh' => '10,1,15',
 				'chxt' => 'y,y,x,r,r',
 				'chxl' => '1:||Edits||2:|'.implode('|', $years).'|4:||Size (kb)|',
 				'chxr' => '0,0,'.$maxeditTotal.'|3,0,'.$maxsizeTotal,
-				'chm' => 'D,737373,3,0,1,1',
-				'chem' => 'y;s=cm_repeat_color;ds=3;dp=all;d=flag,4,5,V,12,0,F00,0F0,00F,000,2,hv'
+				'chm' => "D,737373,3,0,1,1|o,737373,3,-1,4.0|".implode("|", $eventmarker),
+
 		);
 		
+#	|y;s=map_xpin_letter;ds=3;dp=8;d=pin,B,f00	
 		return $chartbase.http_build_query($chdata);
 	}
 

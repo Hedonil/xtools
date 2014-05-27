@@ -52,7 +52,11 @@ function ts_makeSortable(table) {
         // We have a first row: assume it's the header, and make its contents clickable links
         for (var i = 0; i < firstRow.cells.length; i++) {
                 var cell = firstRow.cells[i];
-                if ((" "+cell.className+" ").indexOf(" unsortable ") == -1) {
+                if (table.className.indexOf("leantable") != -1 ){
+                	var oldCont = cell.innerHTML;
+                	cell.innerHTML = '<a href="#" class="sortheader" onclick="ts_resortTable(this);return false;"><span class="sortarrow" >'+oldCont+' ↕</span></a>';
+                }
+                else if ((" "+cell.className+" ").indexOf(" unsortable ") == -1) {
                         cell.innerHTML += '&nbsp;&nbsp;<a href="#" class="sortheader" onclick="ts_resortTable(this);return false;"><span class="sortarrow"><img src="'+ ts_image_path + ts_image_none + '" alt="&darr;"/></span></a>';
                 }
         }
@@ -157,12 +161,15 @@ function ts_resortTable(lnk) {
                         table.tBodies[0].appendChild(newRows[i][0]);
         }
 
-        // Delete any other arrows there may be showing
-        var spans = getElementsByClassName(tr, "span", "sortarrow");
-        for (var i = 0; i < spans.length; i++) {
-                spans[i].innerHTML = '<img src="'+ ts_image_path + ts_image_none + '" alt="&darr;"/>';
+        // Delete any other arrows there may be showing --only if not "leantbable
+        if (table.className.indexOf("leantable") == -1 ){
+	        var spans = getElementsByClassName(tr, "span", "sortarrow");
+	        for (var i = 0; i < spans.length; i++) {
+	                spans[i].innerHTML = '<img src="'+ ts_image_path + ts_image_none + '" alt="&darr;"/>';
+	        }
+	        span.innerHTML = arrowHTML;
         }
-        span.innerHTML = arrowHTML;
+        
 
         ts_alternate(table);            
 }
@@ -210,7 +217,7 @@ function ts_dateToSortKey(date) {
 
 function ts_parseFloat(num) {
         if (!num) return 0;
-        num = parseFloat(num.replace(/,/, ""));
+        num = parseFloat(num.replace(/[,.]/g, '' ));
         return (isNaN(num) ? 0 : num);
 }
 

@@ -2,20 +2,32 @@
 
 class RangeContribs{
 	
-	private $items;
-	private $sqlconds;
-	private $matchingIPs;
-	
-	private $contribs;
+	private $items = array(
+				"cidr" => array(),
+				"user" => array(),
+				"ip" => array(),
+				"error" => array(),
+				"sqlconds" => array(),
+				"matchingIPs" => array(),
+				"byrange" => array(),
+			);
+	private $contribs = array();
 	
 	function getContribs(){
 		return $this->contribs;
 	}
+	function getItems(){
+		return $this->items;
+	}
+
 	
 	function __construct( &$dbr, $input, $begin=null, $end=null, $limit=20 ){
-	
-		$this->checkType($input);
-		$this->getMatchingIPs( $dbr, $begin, $end );
+		
+		$http = new HTTP();
+		
+		$this->checkType( $input );
+		$this->fetchMatchingIPs( $dbr, $begin, $end );
+		$this->fetchIPInformation( $http );
 		$this->fetchContribs( $dbr, $limit );
 	}
 	
@@ -27,58 +39,67 @@ class RangeContribs{
 	 */
 	private function checkType( $input ){
 		
+		$this->items["sqlconds"]["like"] = array();
+		$this->items["sqlconds"]["equal"] = array();
+		
 		$lines = explode( "\n", $input );
 		foreach ($lines as $line ){
 			
 			$tmp = trim(preg_replace('/[^\d|\.|\/]/','', $line));
 			if( preg_match( '/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/', $tmp ) === 1 ) {
-				$this->items[cidr][] = $tmp;
+				$this->items["cidr"][$tmp] = array();
 			}
 			elseif( preg_match( '/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/', $tmp ) === 1 ) {
-				$this->items[ip][] = $tmp;
+				$this->items["ip"][$tmp] = 0 ;
 			}
 			elseif( preg_match( '/[\/]/', $line ) === 1 ) {
-				$this->items[error][] = $line; 
+				$this->items["error"][$line] = 0 ; 
 			}
 			else{
-				$this->items[user][] = $line;
+				$this->items["user"][$line] = 0 ;
 			}
 		}
 		
-		foreach ( $this->items["cidr"] as $i => $item ){
+		foreach ( $this->items["cidr"] as $item => $crap ){
 			$cidr_info = $this->calcCIDR( $item );
-			$this->items["cidr"]["info"][] = $cidr_info;
-			$this->sqlconds["like"][] = $this->findMatch( $cidr_info['begin'], $cidr_info['end'] );
+			$this->items["cidr"][$item]["cidrinfo"] = $cidr_info;
+			$this->items["sqlconds"]["like"][] = $this->findMatch( $cidr_info['begin'], $cidr_info['end'] );
 		}
 		
-		foreach ( $this->items["user"] as $item ){
-			$this->sqlconds["equal"][] = $item;
+		foreach ( $this->items["user"] as $item => $crap){
+			$this->items["sqlconds"]["equal"][] = $item;
 		}
 		
-		$cidr_info = $this->calcRange( $this->items["ip"] );
-		//if the range is too small (1-2) or too big >4096 ip's, we assume it's just a bunch of single ip's (and no range)
-		if ( $cidr_info["count"] >2 && $cidr_info["count"] <= 4096 ){
-			$this->items["ip"]["info"][] = $cidr_info ;
-			$this->sqlconds["like"][] = $this->findMatch( $cidr_info['begin'], $cidr_info['end'] );
-		}else {
-			foreach ( $this->items["ip"] as $item ){
-				$this->sqlconds["equal"][] = $item;
+		//autogroup single ips -- work on it
+#		$cidr_info = $this->calcRange( array_keys( $this->items["ip"] ) );
+#		
+#		//if the range is too small (1-2) or too big >4096 ip's, we assume it's just a bunch of single ip's (and no range)
+#		if ( $cidr_info["count"] > 2 && $cidr_info["count"] <= 4096 ){
+#
+#			$this->items["ip"]["cidrinfo"] = $cidr_info;
+#			$this->sqlconds["like"][] = $this->findMatch( $cidr_info['begin'], $cidr_info['end'] );
+#		}
+#		else {
+			foreach ( $this->items["ip"] as $item => $crap){
+				$this->items["sqlconds"]["equal"][] = $item;
 			}	
-		}
+#		}
 		
 
 #print_r($this->items);
 #print_r($this->sqlconds);
 	}
 	
-	private function getMatchingIPs( &$dbr, $begin, $end ){
+	/**
+	 * Construct query from sql conditions in sqlconds
+	 */
+	private function fetchMatchingIPs( &$dbr, $begin, $end ){
 		
 		$period = ($begin) ? " AND rev_timestamp > '".str_replace("-", "", $begin)."'" : " AND rev_timestamp > 1 ";
 		$period .= ($end) ? " AND rev_timestamp < '".str_replace("-", "", $end)."'" : "" ;
 		
-		//Let's construct the sql from sqlconds array
 		$i = 0;
-		foreach ($this->sqlconds["like"] as $item ){
+		foreach ($this->items["sqlconds"]["like"] as $item ){
 			$like[] = " rev_user_text LIKE '".$dbr->strencode($item)."%' ";
 			$i++;
 		}
@@ -88,7 +109,7 @@ class RangeContribs{
 		
 		
 		$i = 0;
-		foreach ($this->sqlconds["equal"] as $item ){
+		foreach ($this->items["sqlconds"]["equal"] as $item ){
 			$in[] = " '".$dbr->strencode($item)."' ";
 			$i++; 
 		}
@@ -106,17 +127,17 @@ class RangeContribs{
 			Order by INET_ATON(rev_user_text)
 		";
 		
-		$this->matchingIPs = $dbr->query( $query );
+		$this->items["matchingIPs"] = $dbr->query( $query );
+
 #print_r($query);
-#print_r($this->matchingIPs);
+#print_r($this->items);
 
 	}
 	
 	
 	private function fetchContribs( $dbr, $limit ){
-		$wikibase = $lang.".".$wiki.".org";
 	
-		foreach ( $this->matchingIPs as $i => $matchingIP ){
+		foreach ( $this->items["matchingIPs"] as $i => $matchingIP ){
 				
 			$ip = $matchingIP["rev_user_text"];
 			$sum = $matchingIP["sum"];
@@ -143,25 +164,30 @@ class RangeContribs{
 	
 	/**
 	 * Get some ripe information about the IP 
-	 * @param Array $matchingIPs by ref! as we modify this array here
-	 * 
-	 * @return array $matchingIPs
 	 */
-	public function getIPInformation( $http ){
+	private function fetchIPInformation( $http ){
 		
+		$this->items["byrange"] = array();
 		$ranges = array();
 		$i = 0;
 		
-		foreach ( $this->matchingIPs as $e => $matchingIP ){
+		foreach ( $this->items["matchingIPs"] as $e => $matchingIP ){
 			
 			$ip = $matchingIP["rev_user_text"];
+			$count = $matchingIP["sum"];
 			$ipval = ip2long( $ip );
 			
-			if ( long2ip( $ipval ) != $ip ) { continue ; }
+			if ( long2ip( $ipval ) != $ip ) {
+				$this->items["byrange"]["user"]["list"][$ip] = $count;
+				continue ; 
+			}
 			
 			$match = false;
 			foreach ( $ranges as $range ){
 				if ( $ipval >= $range->minval && $ipval <= $range->maxval  ) {
+					
+					$this->items["byrange"][$range->inetnum]["list"][$ip] = $count;
+					
 					$match = true;
 					break;
 				}
@@ -173,13 +199,14 @@ class RangeContribs{
 			$result = json_decode( $http->get( $apiUrl ) );
 			$ripeAttributes = $result->objects->object[0]->attributes->attribute ;
 			$i++;
-
+			
+			$ranges[$i] = new stdClass();
 			foreach ( $ripeAttributes as $u => $attribute ){
 				
 				if ($attribute->name == "inetnum") { 
 					
 					$tmpRange = explode(" - ", $attribute->value );
-					$ranges[$i] = new stdClass();
+					
 					$ranges[$i]->inetnum  = $attribute->value; 
 					$ranges[$i]->min 	= $tmpRange[0];
 					$ranges[$i]->minval = ip2long($tmpRange[0]);
@@ -197,41 +224,32 @@ class RangeContribs{
 				$ranges[$i]->country = $result->country_code;
 			}
 			
+			$this->items["byrange"][ $ranges[$i]->inetnum ]["rangeinfo"] = $ranges[$i];
+			$this->items["byrange"][ $ranges[$i]->inetnum ]["list"][$ip] = $count;
+			
 		}
 #print_r($ranges);
+#print_r($this->items);
 		
 		//Loop again and assign values to the ip's
-		$list = "<table>";
-		$oldnet = "";
+
 		foreach ( $this->matchingIPs as $u => $matchingIP ){
+			
 			$ip = $matchingIP["rev_user_text"];
 			$ipval = ip2long($ip);
+			
 			foreach ( $ranges as $range ){
 				if ( $ipval >= $range->minval && $ipval <= $range->maxval  ) {
-					$matchingIPs[$u]["inetnum"] = $range->inetnum;
-					$matchingIPs[$u]["netname"] = $range->netname;
-					$matchingIPs[$u]["descr"] = $range->descr;
-					$matchingIPs[$u]["country"] = $range->country;
+					$this->matchingIPs[$u]["inetnum"] = $range->inetnum;
+					$this->matchingIPs[$u]["netname"] = $range->netname;
+					$this->matchingIPs[$u]["descr"] = $range->descr;
+					$this->matchingIPs[$u]["country"] = $range->country;
 					
-					if ( $oldnet != $range->inetnum ){
-						$list .= "</table>";
-						$list .= "<br /><span><b>Range:</b> $range->inetnum &nbsp; <b>Provider:</b> $range->netname &middot; $range->descr &middot; $range->country &nbsp;<img src=../images/flags/png/".strtolower($range->country).".png /></span>";
-						$list .= "<table style='margin-left:20px;'>";
-						$oldnet = $range->inetnum;
-					}
-					
-		
-					$list .= "<tr><td><a href='#".$matchingIP["rev_user_text"]."' >".$matchingIP["rev_user_text"]."</a></td><td style='text-align:center'>&nbsp;&middot;</td><td style='text-align:center'>(".$matchingIP["sum"].")</td></tr>";
 					break;
 				}
 			}
-			
 		}
-		$list .= "</table>";
-#print_r( $matchingIPs); die;		
-		return $list;
 	}
-	
 
 	
 	public function calcCIDR( $cidr ) {

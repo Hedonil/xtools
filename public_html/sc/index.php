@@ -4,25 +4,26 @@
 	require_once( '../WebTool.php' );
 
 //Load WebTool class
-	$wt = new WebTool( 'Quick, Dirty, Simple Edit Counter', 'sc', array("database") );
+	$wt = new WebTool( 'Quick, Dirty, Simple Edit Counter', 'sc', array() );
 	$wt->setLimits();
 
 	$wt->content = getPageTemplate( "form" );
 	$wt->assign("lang", "en");
 	$wt->assign("wiki", "wikipedia");
 
-	$user = $wgRequest->getVal('user');
-	$user = $wgRequest->getVal('name', $user );
-	$lang = $wgRequest->getVal('lang');
-	$wiki = $wgRequest->getVal('wiki');
+	$ui = $wt->getUserInfo();
+		$user = $ui->user;
 	
-	$user = str_replace("_", " ", $user);
+	$wi = $wt->getWikiInfo();
+		$lang = $wi->lang;
+		$wiki = $wi->wiki;
 	
 //Show form if &article parameter is not set (or empty)
 	if( !$user ) {
-		$wt->showPage($wt);
+		$wt->showPage();
 	}
 	
+	$dbr = $wt->loadDatabase( $lang, $wiki );
 	$obj = getEditCounts($dbr, $user);
 
 	$wt->content = '

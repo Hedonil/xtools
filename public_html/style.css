@@ -1,6 +1,6 @@
 body {
 	background-attachment:fixed;
-	font-family: helvetica,arial,sans-serif;
+	font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 	font-size: 85%;
 	margin: 0;
 	padding: 4px 1em 4px 1em;
@@ -9,7 +9,6 @@ a{
 	text-decoration:none;
 }
 #wrap{
-	/* background:none; */
 	margin:0 auto;
 	text-align:left;	
 	width:96%;
@@ -26,14 +25,15 @@ a{
 	background-repeat:repeat-x;
 
 	
-	background-image: -webkit-linear-gradient(top, #eeeeee, #d0e4ee); 
-	background-image:    -moz-linear-gradient(top, #eeeeee, #d0e4ee); 
+	background-image: -webkit-linear-gradient(top, #eeeeee, #dee5f9); 
+	background-image:    -moz-linear-gradient(top, #eeeeee, #dee5f9); 
 	background-image:     -ms-linear-gradient(top, #eeeeee, #d0e4ee); 
 	background-image:      -o-linear-gradient(top, #eeeeee, #d0e4ee);
-	background-image:         linear-gradient(to bottom, #eeeeee, #d0e4ee); 
+	background-image:         linear-gradient(to bottom, #eeeeee, #dee5f9); 
 
 	border-radius:5px;
 	/*http://patorjk.com/gradient-image-generator/*/
+	text-rendering: optimizelegibility;
 	
 }
 #footer {
@@ -41,11 +41,11 @@ a{
 	height: 40px;
 	background-color: #EAEAEA;
 	
-	background-image: -webkit-linear-gradient(left, #eeeeee, #d0e4ee); /* For Chrome and Safari */
-	background-image:    -moz-linear-gradient(left, #eeeeee, #d0e4ee); /* For old Fx (3.6 to 15) */
-	background-image:     -ms-linear-gradient(left, #eeeeee, #d0e4ee); /* For pre-releases of IE 10*/
-	background-image:      -o-linear-gradient(left, #eeeeee, #d0e4ee); /* For old Opera (11.1 to 12.0) */
-	background-image:         linear-gradient(to right, #eeeeee, #d0e4ee); /* Standard syntax; must be last */
+	background-image: -webkit-linear-gradient(left, #eeeeee, #dee5f9); /* For Chrome and Safari */
+	background-image:    -moz-linear-gradient(left, #eeeeee, #dee5f9); /* For old Fx (3.6 to 15) */
+	background-image:     -ms-linear-gradient(left, #eeeeee, #dee5f9); /* For pre-releases of IE 10*/
+	background-image:      -o-linear-gradient(left, #eeeeee, #dee5f9); /* For old Opera (11.1 to 12.0) */
+	background-image:         linear-gradient(to right, #eeeeee, #dee5f9); /* Standard syntax; must be last */
 
 	
 	color: rgb(34,34,34);
@@ -81,29 +81,30 @@ img {
 	border: none;
 }
 .alert {
-	margin:0; 
-	background:rgb(255, 153, 153);
-	background:rgba(255, 153, 153, 0.5); 
-	font-size:120%; 
-	font-weight:bold; 
-	border:1px solid #a3bfb1; 
-	text-align:center; 
-	color:#000; 
+	color: #b94a48;
+	background-color: #f2dede;
+	border-color: #eed3d7;
+	text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+	border-radius:4px;
+	text-align:center;
+	font-size:120%;
 	padding:0.2em 0.4em;
-	vertical-align: top;
-	margin-bottom:10px;
+	font-weight:bold;
+	text-rendering: optimizelegibility;
 }
 .notice {
-	margin:0; 
-	background:#9CC; 
-	font-size:120%; 
-	font-weight:bold; 
-	border:1px solid #a3bfb1; 
-	text-align:left; 
-	color:#000; 
+	color: #468847;
+	background-color: #dff0d8;
+	border-color: #d6e9c6;
+	text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+	border-radius:4px;
+	text-align:center;
+	font-size:100%;
 	padding:0.2em 0.4em;
-	vertical-align: top;
-	margin-bottom:10px;
+	//font-weight:bold;
+	margin: 0.5em 1em -0.8em 1em;
+	vertical-align;
+	text-rendering: optimizelegibility;
 }
 input{
 	border-width:1px;
@@ -128,8 +129,23 @@ div.outer_bar {
 	font-size:75%;
 	font-weight:normal;
 }
+.caption{
+	text-align:center; 
+	font-weight:bold; 
+	margin-top:1em;
+	margin-bottom:-1.8em
+}
+.caption p{
+	margin-bottom:0px; 
+	margin-top: 5px; 
+	font-weight:normal;
+	font-size: 80%;
+}
 table.months {
 	padding-top: 0.8em;
+}
+.monthsep{
+	height: 1.2em;
 }
 td.date {
 	padding: 0 1em 0 0;
@@ -137,15 +153,22 @@ td.date {
 }
 table.months td {
 	font-size: 85%;
-	height:10px;
+	//height:10px;
 }
 .tdnum{
 	text-align:right;
+	padding-right:8px;
+}
+.tddate{
+	padding-left:8px;
 }
 .tdgeneral{
 	display:inline-block; 
 	width:60px;
 	text-align:right;
+}
+.tdtop1{
+	padding-left:20px;
 }
 div.red, div.green {
 	height:1em;
@@ -167,25 +190,33 @@ table.topN th {
 table.topN td {
 	padding: .1em .3em;
 }
-
-.wikitable, .prettytable {
+.leantable th, .leantable2 th {
+	font-weight:normal;
+	border-bottom: 1px #aaa solid;
+	padding:3px 5px;
+	text-align:center;
+	white-space:nowrap;
+}
+.leantable2 td {
+	font-weight:normal;
+	border-right: 1px silver solid;
+	border-left: 1px silver solid;
+	padding: 1px 5px;
+}
+.wikitable, .prettytable, .leantable2 {
     margin: 1em 1em 1em 0;
-    //background: #f9f9f9;
-    //border: 1px #aaa solid;
     border-collapse:collapse;
 }
 .wikitable th, .prettytable th  {
 	border: 1px #aaa solid;
     padding: 0.2em 0.5em 0.5em 0.5em;
-    //background: #f9f9f9;
 }
 .wikitable td,  .prettytable td{
     padding: 0.2em 0.5em ;
     border-right: 1px solid silver;
-    //background: #f9f9f9;
 }
-.wikitable tr, .prettytable tr {
-	border: 1px solid silver;
+.wikitable tr, .prettytable tr, .leantable2 tr {
+	border: 1px silver solid;
 }
 
 .legendicon{

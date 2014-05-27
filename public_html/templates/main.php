@@ -2,37 +2,48 @@
 <html>
 <head>
 	<title>X's tools</title>
-	<link rel="stylesheet" type="text/css" href="//tools.wmflabs.org/newwebtest/style.css" />
+	<link rel="stylesheet" type="text/css" href="//<?php echo XTOOLS_BASE_WEB_DIR ?>/style.css" />
 	<script type="text/javascript" src="//tools.wmflabs.org/newwebtest/sortable.js"></script>
 	<?php echo $wt->moreheader ?>
 	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<script type="text/javascript">
+		function switchShow( id ) {
+			if(document.getElementById(id).style.display == "none") {
+				document.getElementById(id).style.display = "block";
+			}
+			else{
+				document.getElementById(id).style.display = "none";
+			}
+		}
+	</script>
 </head>
 
 <body>
 <div id="wrap">
 
 	<div id="header">
-		<span>X!'s tools</span>
+		<span>X!'s tools</span> 
 	</div>
 	
 	<div id="content">
 		<div id="navigation" class="center container">
 			<a href="//tools.wmflabs.org/supercount/">User Analysis Tool</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/ec">Edit counter<sup style="color:green; font-size:70%; position:relative;left:-27px; top:-5px; margin-right:-30px">classic</sup></a> &middot; 
-			<a href="<?php echo $wt->basePath?>/articleinfo/">Page history</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/pages">Pages created</a> &middot;
-			<a href="<?php echo $wt->basePath?>/topedits">Top edits</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/autoedits">Automated edits</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/blame">Article blamer</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/rangecontribs">Range contribs</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/autoblock">Autoblock</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/rfa">RfX</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/rfap">RfX Vote</a> &middot; 
-			<a href="<?php echo $wt->basePath?>/bash">RQ</a> &middot;
-			<a href="<?php echo $wt->basePath?>/sc">SC</a> &middot;
+			<a href="<?php echo XTOOLS_BASE_WEB_DIR ?>/ec">Edit counter<sup style="color:green; font-size:70%; position:relative;left:-27px; top:-5px; margin-right:-30px">classic</sup></a> &middot; 
+			<a href="<?php echo XTOOLS_BASE_WEB_DIR ?>/articleinfo/">Page history</a> &middot; 
+			<a href="<?php echo XTOOLS_BASE_WEB_DIR ?>/pages">Pages created</a> &middot;
+			<a href="<?php echo XTOOLS_BASE_WEB_DIR ?>/topedits">Top edits</a> &middot; 
+			<a href="<?php echo XTOOLS_BASE_WEB_DIR ?>/autoedits">Automated edits</a> &middot; 
+			<a href="<?php echo XTOOLS_BASE_WEB_DIR ?>/blame">Article blamer</a> &middot; 
+			<a href="<?php echo XTOOLS_BASE_WEB_DIR ?>/rangecontribs">Range contribs</a> &middot; 
+			<a href="<?php echo XTOOLS_BASE_WEB_DIR ?>/autoblock">Autoblock</a> &middot; 
+			<a href="<?php echo XTOOLS_BASE_WEB_DIR ?>/rfa">RfX</a> &middot; 
+			<a href="<?php echo XTOOLS_BASE_WEB_DIR ?>/rfap">RfX Vote</a> &middot; 
+			<a href="<?php echo XTOOLS_BASE_WEB_DIR ?>/bash">RQ</a> &middot;
+			<a href="<?php echo XTOOLS_BASE_WEB_DIR ?>/sc">SC</a> &middot;
 		</div>
 
 		<div id="alerts">
+			<?php echo ($wt->sitenotice) ? "<h4 class='notice'> $wt->sitenotice </h4>" : "" ?>
 			<h2 style="margin-bottom: 0.4em"><?php echo $wt->toolTitle ?><span style="font-size: 75%;font-weight:normal; "> &bull; <?php echo $wt->toolDesc ?></span></h2>
 			<?php echo ($wt->alert) ? "<h3 class='alert'> $wt->alert </h3>" : "" ?>
 			<?php echo ($wt->error) ? "<div class='alert'> $wt->error </div>" : "" ?>
@@ -51,9 +62,7 @@
 		<hr style="margin-top:0px;"/>
 		<div style="float:right; display:inline-block">
 			<span >
-				<!-- <a href="//validator.w3.org/check?uri=referer"><img src="//tools.wmflabs.org/xtools/images/xhtml.png" alt="Valid XHTML 1.0 Transitional" height="31" width="88" /></a> -->
 				<a style="margin-right:5px;" href="//translatewiki.net/?setlang=<?php echo $wt->uselang ?> "><img height="36px" src="//upload.wikimedia.org/wikipedia/commons/5/51/Translatewiki.net_logo.svg" alt="translatewiki.net logo"/></a>
-				<!-- <a href="//anybrowser.org/campaign"><img height="40px" src="//tools.wmflabs.org/xtools/images/anybrowser.png" alt="AnyBrowser compliant" /></a> -->
 				<a href="//tools.wmflabs.org"><img height="40px" src="//tools.wmflabs.org/xtools/images/labs.png" alt="Powered by WMF Labs" /></a>
 			</span>
 		</div>	

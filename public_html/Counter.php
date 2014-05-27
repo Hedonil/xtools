@@ -26,7 +26,7 @@ class Counter {
 	
 	public $baseurl;
 	public $apibase;
-#	public $http;
+
 	public $mNamespaces = array( 'ids' => array(),	'names' => array() );
 	
 	private $mIP;
@@ -34,6 +34,10 @@ class Counter {
 	
 	public $mUID;
 	public $mName;
+	private $mNameDbEnc;
+	private $mNameUrlEnc;
+	
+	public $mDomain;
 	public $mRegistration;
 	public $mGroups;
 	public $mGroupsGlobal;
@@ -44,8 +48,10 @@ class Counter {
 	public $mLatestEdit;
 	
 	public $mUnique;
+	public $mUniqueDeleted;
 	public $mReverted;
 	public $mDeleted;
+	public $mDeletedCreated;
 	public $mAutoEdits;
 	public $mUploaded;
 	public $mUploadedCommons;
@@ -71,6 +77,7 @@ class Counter {
 	private $mMonthTotals = array();
 	private $mNamespaceTotals = array();
 	private $mUniqueArticles = array( 'total', 'namespace_specific' );
+	private $mUniqueArticlesDeleted = array();
 	
 	public $mAutoEditTools = array();
 
@@ -86,15 +93,18 @@ class Counter {
 	
 	private $data;
 	
-	function __construct( &$dbr, $user, $wikibase, $noautorun=false ) {
+	function __construct( &$dbr, $user, $domain, $noautorun=false ) {
 		
-#		$this->http = new HTTP();
-		$this->baseurl = 'http://'.$wikibase;
+		$this->baseurl = 'http://'.$domain;
 		$this->apibase = $this->baseurl.'/w/api.php?';
 		
-		$this->mName = $user;
+		$this->mDomain = $domain;
+		$this->mName = trim( urldecode( $user ) );
+		$this->mNameDbEnc = $dbr->strencode( $this->mName );
+		$this->mNameUrlEnc = rawurlencode( $this->mName );
 		
-		$this->getUserInfo( $dbr );
+		$this->fetchUserData( $dbr );
+		$this->checkIP();
 		$this->checkOptin();
 		
 		if ( !$this->mExists || $noautorun ) return ;
@@ -110,9 +120,7 @@ class Counter {
 		array_push( $perflog->stack, $this->perflog);
 	}
 
-	
-	function getUserInfo( $dbr ){
-		$pstart = microtime(true);
+	function checkIP(){
 		
 		$this->mIP = ( long2ip( ip2long( $this->mName ) ) == $this->mName ) ? true : false;
 		
@@ -120,111 +128,137 @@ class Counter {
 			$this->mExists = true;
 			$this->mUID = 0;
 		}
-		else{
-			
-			//Get lokal user info
-			$data = array(
-					'action' => 'query',
-					'list' 	 => 'users',
-					'format' => 'json',
-					'usprop' => 'blockinfo|groups|implicitgroups|editcount|registration',
-					'ususers'=> $this->mName
-				);
-			$query[] = array( "type" => "api", "src" => "", "query" => $this->apibase.http_build_query( $data ) );
-			
-			//GEt global suser info
-			$data = array(
-					'action' => 'query',
-					'meta' => 'globaluserinfo',
-					'format' => 'json',
-					'guiprop' => 'groups|rights|merged|unattached|editcount',
-					'guiuser' => $this->mName,
-				);
-			$query[] = array( "type" => "api", "src" => "", "query" => $this->apibase.http_build_query( $data ) );
-
-			//Get Namespaces
-			$data = array(
-					'action' => 'query',
-					'meta' => 'siteinfo',
-					'format' => 'json',
-					'siprop' => 'namespaces',
-				);
-			$query[] = array( "type" => "api", "src" => "", "query" => $this->apibase.http_build_query( $data )	);
-			
-			//Get Optin page local
-			$data = array(
-					'action' => 'query',
-					'prop' => 'revisions',
-					'format' => 'json',
-					'rvprop' => 'content',
-					'rvlimit' => '1',
-					'rvdir' => 'older',
-					'titles' => 'User:'.$this->mName.'/EditCounterOptIn.js|User:'.$this->mName.'/EditCounterOptOut.js'
-				);
-			$query[] = array( "type" => "api", "src" => "", "query" => $this->apibase.http_build_query( $data )	);
-			
-			//Get Optin page global meta
-			$data = array(
-					'action' => 'query',
-					'prop' => 'revisions',
-					'format' => 'json',
-					'rvprop' => 'content',
-					'rvlimit' => '1',
-					'rvdir' => 'older',
-					'titles' => 'User:'.$this->mName.'/EditCounterGlobalOptIn.js'
-			);
-			$query[] = array( "type" => "api", "src" => "", "query" => 'http://meta.wikimedia.org/w/api.php?'.http_build_query( $data )	);
-
-			
-			$multires = $dbr->multiquery ($query );
-			
-			
-			$res = $multires[0]->query->users[0];
-			
-			if ( isset( $res->userid) ){
-				$this->mUID = $res->userid;
-				$this->mName = urldecode($res->name);
-				$this->mGroups = $res->groups;
-					unset($this->mGroups[ array_search("*", $this->mGroups) ]);
-				$this->mRegistration = $res->registration;
-				$this->mExists = true;
-			}
-			else {
-				$this->mExists = false;
-			}
-			unset($res);
-			
-			
-			$res = $multires[1]->query->globaluserinfo;
-			
-			if ( isset( $res->id) ){
-				$this->mGroupsGlobal = $res->groups;
-				$this->mHomeWiki = $res->home;
+	}
+	
+	function checkOptin(){
+		
+		if( $this->mDomain == "en.wikipedia.org" || $this->mIP ){
+			$this->optin = true;
+			return;
+		}
 				
-				foreach ( $res->merged as $wiki ){
-					$this->wikis[ $wiki->url ] = $wiki->editcount;
+		foreach ($this->optinPages as $site ){
+			foreach ($site as $optinPage) {
+				if ( strpos ($optinPage->title, "OptOut.js") && isset($optinPage->pageid) ){
+					$this->optin = false;
+					break(2);
 				}
-				arsort($this->wikis);
-				unset($res);
-				
-				$this->mRegisteredWikis = count($this->wikis);
-				$this->mTotalGlobal = array_sum($this->wikis);
+				if ( strpos ($optinPage->title, "OptIn.js") && isset($optinPage->pageid) ){
+					$this->optin = true;
+					break(2);
+				}
 			}
+		}
+	}
+	
+	function fetchUserData( $dbr ){
+		$pstart = microtime(true);
+		
+		//Get lokal user info
+		$data = array(
+				'action' => 'query',
+				'list' 	 => 'users',
+				'format' => 'json',
+				'usprop' => 'blockinfo|groups|implicitgroups|editcount|registration',
+				'ususers'=> $this->mName
+			);
+		$query[] = array( "type" => "api", "src" => "", "query" => $this->apibase.http_build_query( $data ) );
+		
+		//GEt global suser info
+		$data = array(
+				'action' => 'query',
+				'meta' => 'globaluserinfo',
+				'format' => 'json',
+				'guiprop' => 'groups|rights|merged|unattached|editcount',
+				'guiuser' => $this->mName,
+			);
+		$query[] = array( "type" => "api", "src" => "", "query" => $this->apibase.http_build_query( $data ) );
+
+		//Get Namespaces
+		$data = array(
+				'action' => 'query',
+				'meta' => 'siteinfo',
+				'format' => 'json',
+				'siprop' => 'namespaces',
+			);
+		$query[] = array( "type" => "api", "src" => "", "query" => $this->apibase.http_build_query( $data )	);
+		
+		//Get Optin page local
+		$data = array(
+				'action' => 'query',
+				'prop' => 'revisions',
+				'format' => 'json',
+				'rvprop' => 'content',
+				'rvlimit' => '1',
+				'rvdir' => 'older',
+				'titles' => 'User:'.$this->mName.'/EditCounterOptIn.js|User:'.$this->mName.'/EditCounterOptOut.js'
+			);
+		$query[] = array( "type" => "api", "src" => "", "query" => $this->apibase.http_build_query( $data )	);
+		
+		//Get Optin page global meta
+		$data = array(
+				'action' => 'query',
+				'prop' => 'revisions',
+				'format' => 'json',
+				'rvprop' => 'content',
+				'rvlimit' => '1',
+				'rvdir' => 'older',
+				'titles' => 'User:'.$this->mName.'/EditCounterGlobalOptIn.js'
+		);
+		$query[] = array( "type" => "api", "src" => "", "query" => 'http://meta.wikimedia.org/w/api.php?'.http_build_query( $data )	);
+
+		
+		//Execute multiquery
+		$multires = $dbr->multiquery ($query );
+		
+		
+		//Get the outputs
+		$res = $multires[0]->query->users[0];
+		
+		if ( isset( $res->userid) ){
+			$this->mUID = $res->userid;
+			$this->mName = urldecode($res->name);
+			$this->mGroups = $res->groups;
+				unset($this->mGroups[ array_search("*", $this->mGroups) ]);
+			$this->mRegistration = $res->registration;
+			$this->mExists = true;
+		}
+		else {
+			$this->mExists = false;
+		}
+		unset($res);
+		
+		
+		$res = $multires[1]->query->globaluserinfo;
+		
+		if ( isset( $res->id) ){
+			$this->mGroupsGlobal = $res->groups;
+			$this->mHomeWiki = $res->home;
+			
+			foreach ( $res->merged as $wiki ){
+				$this->wikis[ $wiki->url ] = $wiki->editcount;
+			}
+			arsort($this->wikis);
 			unset($res);
 			
-			$res = $multires[2]->query->namespaces;
+			$this->mRegisteredWikis = count($this->wikis);
+			$this->mTotalGlobal = array_sum($this->wikis);
+		}
+		unset($res);
+		
+		$res = $multires[2]->query->namespaces;
 
-			foreach( $res as $id => $ns ) {
-				$nsname = ( $ns->{'*'} == "" ) ? 'Main' : $ns->{'*'};
-				$this->mNamespaces['ids'][$nsname] = $id;
-				$this->mNamespaces['names'][$id] =  $nsname;
-			}
-			
-			$this->optinPages[] = $multires[3]->query->pages ;
-			$this->optinPages[] = $multires[4]->query->pages ;
+		foreach( $res as $id => $ns ) {
+			$nsname = ( $ns->{'*'} == "" ) ? 'Main' : $ns->{'*'};
+			$this->mNamespaces['ids'][$nsname] = $id;
+			$this->mNamespaces['names'][$id] =  $nsname;
+		}
+		
+		$this->optinPages[] = $multires[3]->query->pages ;
+		$this->optinPages[] = $multires[4]->query->pages ;
 			
 #print_r($this->optinPages);			
-		}
+
 		
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
 	}
@@ -249,7 +283,7 @@ class Counter {
 				"
 			);
 		
-		$where = ( $this->mIP ) ? "log_user_text = '$this->mName' " : "log_user = '$this->mUID' AND log_timestamp > 1";
+		$where = ( $this->mIP ) ? "log_user_text = '$this->mName' AND log_user =0 " : "log_user = '$this->mUID' AND log_timestamp > 1";
 		$query[] = array(
 				"type" => "db",
 				"src" => "this",
@@ -270,6 +304,29 @@ class Counter {
 					WHERE $where
 				"
 			);
+		
+		$where = ( $this->mIP ) ? "ar_user_text = '$this->mName' " : "ar_user = '$this->mUID' AND ar_timestamp > 1";
+		$query[] = array(
+				"type" => "db",
+				"src" => "this",
+				"query" => "
+					SELECT COUNT(*) AS count
+					FROM archive_userindex
+					WHERE $where AND ar_parent_id = '0'
+				"
+		);
+		
+		$where = ( $this->mIP ) ? "ar_user_text = '$this->mName' " : "ar_user = '$this->mUID' AND ar_timestamp > 1";
+		$query[] = array(
+				"type" => "db",
+				"src" => "this",
+				"query" => "
+					SELECT distinct ar_title
+					FROM archive_userindex
+					WHERE $where 
+				"
+		);
+		
 		
 		$where = ( $this->mIP ) ? "frp_user_id = '999999999' " : "frp_user_id = '$this->mUID' ";
 		$query[] = array(
@@ -293,14 +350,19 @@ class Counter {
 					WHERE log_type = 'upload' AND $where
 				"
 			);
-#print_r($query);		
+
+		
 		$this->data = $dbr->multiquery( $query );		
 
+		
 		$this->revs = &$this->data[0];
 		$this->logs = &$this->data[1];
 		$this->mDeleted = $this->data[2][0]["count"];
-		if ( 1 === preg_match('/revertedEdits=([0-9]+)/', $this->data[3][0]['frp_user_params'], $capt)){ $this->mReverted = $capt[1]; }
-		$this->mUploadedCommons = $this->data[4][0]["count"];
+		$this->mDeletedCreated = $this->data[3][0]["count"];
+		$this->mUniqueArticlesDeleted = $this->data[4];
+		if ( 1 === preg_match('/revertedEdits=([0-9]+)/', $this->data[5][0]['frp_user_params'], $capt)){ $this->mReverted = $capt[1]; }
+		$this->mUploadedCommons = $this->data[6][0]["count"];
+
 #print_r($ff[1]);
 
 		$this->perflog[] = array(__FUNCTION__, microtime(true)-$pstart );
@@ -355,24 +417,14 @@ class Counter {
 	function parseRevisions(){
 		$pstart = microtime(true);
 		
-// 		$base_ns = array();
-
-// 		foreach( $wgNamespaces['names'] as $id => $name ) {
-// 			$this->mNamespaceTotals[$id] = 0;
-// 			$base_ns[$id] = 0;
-// 		}
-	
-#		$knownrevs = array();
-
 		$this->mFirstEdit  = '20991231999999';
 		$this->mLatestEdit = '00000000000000';
 		foreach ( $this->revs as $u => $row ) {
-
-#			//check for duplicates (eg. filemover)
-#			$hash = hash( 'crc32', $row["rev_comment"].substr( $row["rev_comment"],0 , 11) );
-#			if ( in_array( $hash, $knownrevs ) ) { continue; }
-#			$knownrevs[] = $hash;
-
+			
+			if ( !isset($this->mNamespaceTotals[ $row['page_namespace'] ]) ){
+				$this->mNamespaceTotals[ $row['page_namespace'] ] = 0;
+			}
+			
 			$this->mNamespaceTotals[ $row['page_namespace'] ]++;
 			
 			$timestamp = substr( $row['rev_timestamp'], 0, 4 ) . '/' . substr( $row['rev_timestamp'], 4, 2 );
@@ -414,17 +466,23 @@ class Counter {
 			}
 			
 			$this->mLive++;
-			
-#			unset( $this->revs[$u] );
 		}
-
+		//check unique articles in deleted
+		$this->mUniqueDeleted = count( $this->mUniqueArticlesDeleted );
+#print_r($this->mUniqueDeleted);
+		foreach ( $this->mUniqueArticlesDeleted as $i => $row ){
+			if ( array_key_exists( $row["ar_title"], $this->mUniqueArticles['total'] ) ){
+				$this->mUniqueDeleted -= 1;
+			}
+		}
+#print_r($this->mUniqueDeleted);
+		
 		$this->mFirstEdit = date('Y-m-d H:i:s', strtotime( $this->mFirstEdit ) );
 		$this->mUnique = count( $this->mUniqueArticles['total'] );
 		$this->mTotal = $this->mLive + $this->mDeleted;
 		
-		//print_r($this->mUniqueArticles);
 		
-		$this->mAveragePageEdits = number_format( ( $this->mTotal ? $this->mTotal / count( $this->mUniqueArticles['total'] ) : 0 ), 2 );
+		$this->mAveragePageEdits = ( $this->mTotal ) ? $this->mTotal / $this->mUnique  : 0 ;
 		
 		//Well that sucked. This just fills the mMonthTotals array with all the months that have passed since the users last edit, 
 		//if they haven't edited in over a month. Instead of appearing as though the user edited this month, it now is obvious they haven't edited in months
@@ -488,19 +546,27 @@ class Counter {
 		ksort( $this->mMonthTotals );
 	}
 
+	
+// #*************************************************** stand alone modules ****************************************************#	
+	
 	/**
 	 * Modul for standalone call from /autoedits
+	 * this one performs a separate query, while in Counter main, it is part of parseRevs
+	 * expects input date to be in format YYYY-mm-dd
 	 */
 	public function calcAutoEditsDB( &$dbr, $begin, $end ) {
 		global $perflog; $start = microtime(true);
 		
-		$user = $dbr->strencode( $this->mName );
 		$AEBTypes = self::getAEBTypes();
 
+		$user = $dbr->strencode( $this->mName );
+		$begindb = $dbr->strencode( str_replace("-", "", $begin ) );
+		$enddb   = $dbr->strencode( str_replace("-", "", $end ) );
 	
-		$cond_begin = ( $begin ) ? 'AND UNIX_TIMESTAMP(rev_timestamp) > ' . strtotime( $begin ) : null;
-		$cond_end 	= ( $end ) ? 'AND UNIX_TIMESTAMP(rev_timestamp) < ' . strtotime( $end ) : null;
+		$cond_begin = ( $begin ) ? " AND rev_timestamp > '$begindb' " : null;
+		$cond_end 	= ( $end ) ? " AND rev_timestamp < '$enddb' ": null;
 	
+		$query = null;
 		foreach( $AEBTypes as $toolname => $check ) {
 				
 			$cond_tool = " AND rev_comment ".$check['type']." '".$check['query']. "' ";
@@ -513,6 +579,7 @@ class Counter {
 		}
 		$query[] = " SELECT 'live' as toolname ,count(*) as count from revision_userindex WHERE rev_user_text = '$user' ";
 		$query[] = " SELECT 'deleted' as toolname, count(*) as count from archive_userindex WHERE ar_user_text = '$user' ";
+
 		
 		$res = $dbr->query( implode(" UNION ", $query ) );
 		
@@ -523,6 +590,8 @@ class Counter {
 		$contribs["editcount"] = $contribs["tools"]["live"] + $contribs["tools"]["deleted"];
 		unset( $contribs["tools"]["live"], $contribs["tools"]["deleted"] );
 		
+		$contribs["start"] = $begin;
+		$contribs["end"] = $end;
 		$contribs["total"] = array_sum( $contribs["tools"] );
 		$contribs["pct"] = ( $contribs["total"] / $contribs["editcount"] ) *100 ;
 		
@@ -532,21 +601,69 @@ class Counter {
 		return $contribs;
 	}
 	
-	function checkOptin(){
-		foreach ($this->optinPages as $site ){
-			foreach ($site as $optinPage) {
-				if ( strpos ($optinPage->title, "OptOut.js") && isset($optinPage->pageid) ){
-					$this->optin = false;
-					break(2);
-				}
-				if ( strpos ($optinPage->title, "OptIn.js") && isset($optinPage->pageid) ){
-					$this->optin = true;
-					break(2);
-				}
-			}
+	
+	/**
+	 * Modul for stand alone calls from /pages created
+	 */	
+	function getCreatedPages( &$dbr, $ui, $domain, $namespace, $redirects ){
+	
+		$namespaceConditionRev = "";
+		$namespaceConditionArc = "";
+		
+		if ($namespace != "all") {
+			$namespaceConditionRev = " and page_namespace = '".intval($namespace)."' ";
+			$namespaceConditionArc = " and ar_namespace = '".intval($namespace)."' ";
 		}
+	
+		$redirectCondition = "";
+		if ( $redirects == "onlyredirects" ){ $redirectCondition = " and page_is_redirect = '1' "; }
+		if ( $redirects == "noredirects" ){ $redirectCondition = " and page_is_redirect = '0' "; }
+	
+		$username = $ui->userDb;
+		$userid = $ui->userid;
+	
+		if ( $ui->isIP ){
+			$whereRev = " rev_user_text = '$username' AND rev_user = '0 ";
+			$whereArc = " ar_user_text = '$username' AND ar_user = '0 ";
+		}
+		else {
+			$whereRev = " rev_user = '$userid' AND rev_timestamp > 1 ";
+			$whereArc = " ar_user = '$userid' AND ar_timestamp > 1 ";
+		}
+	
+		$query = "
+			(SELECT DISTINCT page_namespace as namespace, 'rev' as type, page_title as page_title, page_is_redirect as page_is_redirect, rev_timestamp as timestamp
+			FROM page
+			JOIN revision_userindex on page_id = rev_page
+			WHERE  $whereRev  AND rev_parent_id = '0'  $namespaceConditionRev  $redirectCondition  
+			)
+				
+			UNION
+				
+			(SELECT DISTINCT ar_namespace as namespace, 'arc' as type, ar_title as page_title, '0' as page_is_redirect, ar_timestamp as timestamp
+			FROM archive_userindex
+			WHERE  $whereArc  AND ar_parent_id = '0' $namespaceConditionArc  
+			)
+				
+			ORDER BY namespace ASC, timestamp DESC;
+		";
+	
+		return $dbr->query( $query );
+		
 	}
 	
+	/**
+	 *Modul for stand alone calls from /topedits 
+	 * @param unknown $dbr
+	 */
+
+		
+	function getOptinLinkLocal(){
+		return  "<a href=\"//$this->mDomain/wiki/User:$this->mName/EditCounterOptIn.js\" >$this->mName/EditCounterOptIn.js</a>";
+	}
+	function getOptinLinkGlobal(){
+		return "<a href=\"//meta.wikimedia.org/wiki/User:$this->mName/EditCounterGlobalOptIn.js\" >$this->mName/EditCounterGlobalOptIn.js (metawiki)</a>";
+	}
 	
 	function getNamespaces(){
 		return $this->mNamespaces;

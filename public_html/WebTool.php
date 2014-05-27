@@ -23,7 +23,6 @@ $perflog = new Perflog();
  *
  */
 class WebTool {
-	public $basePath = XTOOLS_BASE_WEB_DIR;
 	
 	public $moreheader;
 	
@@ -42,8 +41,6 @@ class WebTool {
 	public $executed;
 	public $memused;
 	
-	public $userinfo;
-	
 	public $i18Langs;
 	public $uselang;
 	public $translateMsg;
@@ -54,12 +51,14 @@ class WebTool {
 	private $dateFormatterDate;
 	private $dateFormatterTime;
 	private $mOutput;
-
+	private $debug;
+	
 	function __construct( $viewtitle = null, $configtitle = null, $options = array() ) {
 		global $wgRequest, $dbr, $site, $I18N, $redis;
 		
 		//Start session
-#		session_cache_limiter("public");
+		session_cache_limiter("public");
+		session_cache_expire(5);
 		$lifetime = 86400;
 		$path = preg_replace('/^(\/.*\/).*/', '\1', dirname($_SERVER['SCRIPT_NAME']) );
 		session_name( 'xtools' );
@@ -90,11 +89,14 @@ class WebTool {
 		$this->bugreport = '<a href="//github.com/x-Tools/xtools/issues" >'.$I18N->msg('bugs').'</a> |';
 		
 		mb_internal_encoding("utf-8"); 
+		$this->debug = $wgRequest->getBool( 'debug' );
 		
 // 		if( !in_array( 'addstat', $dont ) ) {
 // 			require_once( '/data/project/xtools/stats.php' );
 // 			addStatV3( $toolname );
 // 		}
+		
+		$this->sitenotice = "Xtools has been refurbished and will be actively maintained as legacy (non-JS) tool. For JS-version see User Analysis Tool.";
 
 	}
 	
@@ -151,21 +153,74 @@ class WebTool {
 		return $obj;
 	}
 	
-	function getUserInfo( $lang=null, $wiki=null, $user=null){
+	function getUserInfo( $lang=null, $wiki=null, $username=null, $dbcheck=true){
 		global $wgRequest;
 		
-		$uio = new stdClass(
-				$username = null,
-				$usernameUrlEnc = null,
-				$isIP = false,
-				$userid = null
-			);
+		$ui = new stdClass();
+			$ui->user = null;
+			$ui->userUrl = null;
+			$ui->userDb = null;
+			$ui->isIP = false;
+			$ui->userid = null;
 		
-		$username = ( !$user ) ? $wgRequest->getVal('user') : $user ;
-		$username = ( !$username ) ? $wgRequest->getVal( 'name' ) : $username;
+		if ( !$username ){
+			//check both variants user & name
+			$username = $wgRequest->getVal('user');
+			$username = $wgRequest->getVal('name', $username );
+		}
+		if ( !$username ){
+			return $ui;
+		}
 		
-		$uio->isIP = ( long2ip( ip2long( $username ) ) == $username ) ? true : false;
+		if ( !$lang || !$wiki ){
+			$wi = $this->getWikiInfo();
+				$lang = $wi->lang;
+				$wiki = $wi->wiki;
+		}
+		if ( !$lang || !$wiki ){
+			$this->toDie( 'nowiki', "wt::getUserInfo");
+			//return $ui;
+		}
+
+		if ( ($ip = long2ip( ip2long( $username ) ) ) == $username ){
+			$ui->isIP = true;
+		}
+
+		$username = ucfirst( trim ( urldecode(  $username ) ) );
+		$ui->user = $username;
+		$ui->userUrl = rawurlencode( $username );
 		
+		if ( !$dbcheck ){ return $ui; }
+		
+		
+		if ( $ui->isIP  ){
+			$ui->isIP = true;
+			$ui->userid = 0;
+			$ui->userDb = $ip;
+		}
+		else{
+			
+			$dbr2 = $this->loadDatabase( $lang, $wiki );
+			
+			$ui->userDb = $dbr2->strencode( $username );
+			$query = "
+					SELECT user_id
+					FROM user
+					WHERE user_name = '$ui->userDb';
+				";
+			
+			$result = $dbr2->query( $query );
+			$dbr2->close();
+			
+			if( isset($result[0]["user_id"]) ){
+				$ui->userid = (int)$result[0]["user_id"];
+			}
+			else{
+				$this->toDie( 'nosuchuser', $username." (wt::getUserInfo)");
+			}
+		}
+		
+		return $ui;
 	}
 	
 	function checkLocale(){
@@ -263,12 +318,13 @@ class WebTool {
 			");
 		
 		$secs = floor($res[0]['replag']);
+
 		if(  $secs > 120  ){
 			$timeMin = (int)($secs / 60);
 			$msgMin = $I18N->msg( 'minutes', array("variables" => array($timeMin)));
+			
 			$this->replag = $I18N->msg( 'highreplag', array("variables" => array($msgMin))); 
 		}
-
 	}
 	
 	function initI18N(){
@@ -292,11 +348,12 @@ class WebTool {
 		}
 		
 		$this->i18Langs = $I18N->getAvailableLangs('supercount');
-		$this->translateMsg = '
-				<span  style="margin-right:5px" ><a href="//translatewiki.net/wiki/Special:Translate?group=tsint-supercount&amp;
-							filter=%21translated&amp;action=translate&amp;setlang='.$this->uselang.'" >('.$I18N->msg('translatelink').')</a>
-				</span>
-				';
+		$this->translateMsg = '<span  title="soon.." style="margin-right:5px" >Translate</span>';
+// 				'
+// 				<span  style="margin-right:5px" ><a href="//translatewiki.net/wiki/Special:Translate?group=tsint-supercount&amp;
+// 							filter=%21translated&amp;action=translate&amp;setlang='.$this->uselang.'" >('.$I18N->msg('translatelink').')</a>
+// 				</span>
+// 				';
 		
 		return $I18N;
 	}
@@ -397,10 +454,6 @@ class WebTool {
 		if( $capital ) $name = ucfirst( $name );
 		
 		return $name;
-	}
-	
-	public function isIP( $name ) {
-		return (bool) ( long2ip(ip2long($name)) == $name );
 	}
 	
 	public function numFmt( $number, $decimal = 0, $noZero = false ) {
@@ -506,7 +559,9 @@ class WebTool {
 		header('content-type: text/html; charset: utf-8');
 		include '../templates/main.php';
 	
-		echo $perflog->getOutput();
+		if( $this->debug ) 
+			echo $perflog->getOutput();
+		
 		$this->__destruct();
 	}
 	
@@ -542,6 +597,7 @@ class Database2{
 	function query( $queryString ) {
 		
 		$retArr = null;
+		if (!$queryString ) return $retArr;
 
 		if ( $result = $this->dbo->query( $queryString ) ){
 			
@@ -563,6 +619,7 @@ class Database2{
 	
 	function multiquery( $queries ){
 		global $redis, $perflog;
+		$mqstart = microtime(true);
 		
 		if ($redis){
 			$sqlapi = "http://tools-webproxy/tools-info/sqlapi/api.php?";
@@ -595,7 +652,7 @@ class Database2{
 			}
 			
 			$apiresults = $this->multicurl($request);
-#print_r($apiresults); 
+
 			
 			//Get the results from redis
 			$error = false;
@@ -605,6 +662,8 @@ class Database2{
 				
 				if ( $queries[$i]["type"] == "api"){
 					$result[$i] = $obj;
+					
+					$perflog->add('mq_api: '.count($obj), microtime(true)-$mqstart );
 				}
 				elseif ( !is_object($obj) || $obj->length == 0 ) {
 					$start = microtime(true);
@@ -639,7 +698,7 @@ class Database2{
 	
 		foreach ( $urlArr as $i => $url ) {
 			$ch[$i] = curl_init();
-			curl_setopt($ch[$i], CURLOPT_USERAGENT, 'WikiViewStats/'.$version.' (https://tools.wmflabs.org/wikiviewstats/; Hedonil)');
+			curl_setopt($ch[$i], CURLOPT_USERAGENT, 'Xtools/2.0 (https://tools.wmflabs.org/xtools/; Hedonil/Cyberpower678)');
 			curl_setopt($ch[$i], CURLOPT_RETURNTRANSFER, true);
 			curl_setopt($ch[$i], CURLOPT_URL, $url);
 			//echo curl_getinfo($handle, CURLINFO_HTTP_CODE);
